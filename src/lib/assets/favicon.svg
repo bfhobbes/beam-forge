@@ -1,4 +1,37 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#059669"/>
-  <text x="32" y="32" dy="0.35em" text-anchor="middle" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif" font-size="26" font-weight="600" fill="#ffffff">BF</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="160" y1="96" x2="864" y2="928" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#12334B"/>
+      <stop offset="1" stop-color="#07131F"/>
+    </linearGradient>
+    <linearGradient id="metal" x1="512" y1="632" x2="512" y2="934" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F7B84B"/>
+      <stop offset="1" stop-color="#D75A16"/>
+    </linearGradient>
+    <linearGradient id="beam" x1="246" y1="-96" x2="520" y2="628" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#72F1FF"/>
+      <stop offset=".72" stop-color="#D9FCFF"/>
+      <stop offset="1" stop-color="#FFFFFF"/>
+    </linearGradient>
+    <clipPath id="icon-clip">
+      <rect x="48" y="48" width="928" height="928" rx="232"/>
+    </clipPath>
+  </defs>
+  <rect x="48" y="48" width="928" height="928" rx="232" fill="url(#bg)"/>
+  <g clip-path="url(#icon-clip)">
+    <path d="M112 632 512 520 912 632v190L512 934 112 822V632Z" fill="url(#metal)"/>
+    <path d="m112 632 400 112 400-112-400-112-400 112Z" fill="#FFD36A"/>
+    <path d="M246-96 520 628" stroke="#28DDF6" stroke-opacity=".16" stroke-width="156" stroke-linecap="round"/>
+    <path d="M246-96 520 628" stroke="#35E5FA" stroke-opacity=".38" stroke-width="112" stroke-linecap="round"/>
+    <path d="M246-96 520 628" stroke="url(#beam)" stroke-width="72" stroke-linecap="round"/>
+    <path d="M246-96 520 628" stroke="#FFFFFF" stroke-width="30" stroke-linecap="round"/>
+    <path d="M524 630 728 580" stroke="#F0441E" stroke-opacity=".28" stroke-width="70" stroke-linecap="round"/>
+    <path d="M524 630 728 580" stroke="#FF7A1A" stroke-opacity=".7" stroke-width="40" stroke-linecap="round"/>
+    <path d="M524 630 728 580" stroke="#FFF08B" stroke-width="20" stroke-linecap="round"/>
+    <path d="M524 630 728 580" stroke="#FFFFFF" stroke-width="8" stroke-linecap="round"/>
+    <path d="M520 628 480 532M520 628l40-98M520 628l-102-42M520 628l-84 76M520 628l26 110" stroke="#FFEA5B" stroke-width="30" stroke-linecap="round"/>
+    <circle cx="520" cy="628" r="56" fill="#FFF8C6"/>
+    <circle cx="520" cy="628" r="34" fill="#FFFFFF"/>
+    <circle cx="520" cy="628" r="15" fill="#FFF02E"/>
+  </g>
 </svg>
