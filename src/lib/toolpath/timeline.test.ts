@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { Toolpath } from "#lib/bindings/gcode/Toolpath.js";
 import type { Move } from "#lib/bindings/plan/Move.js";
-import { buildTimeline, clock, moveAt, pointAfter, pointAt } from "./timeline.js";
+import { buildTimeline, clock, layerDuration, moveAt, pointAfter, pointAt } from "./timeline.js";
+import { atFeedRate } from "./fixtures.js";
 
 const cut = (x: number, y: number, speed = 600, power = 50): Move => ({
   kind: "cut",
@@ -12,9 +13,8 @@ const cut = (x: number, y: number, speed = 600, power = 50): Move => ({
 const rapid = (x: number, y: number): Move => ({ kind: "rapid", to: { x, y } });
 
 /** A 10 mm rapid at 6000 mm/min (0.1 s), then a 10 mm square at 600 mm/min (1 s per side). */
-const square: Toolpath = {
-  rapidRate: 6000,
-  plan: {
+const square: Toolpath = atFeedRate(
+  {
     start: { x: 0, y: 0 },
     layers: [
       {
@@ -22,10 +22,15 @@ const square: Toolpath = {
         airAssist: true,
         moves: [rapid(10, 0), cut(20, 0), cut(20, 10)],
       },
-      { layerId: "b", airAssist: false, moves: [cut(10, 10, 300, 100), cut(10, 0, 300, 100)] },
+      {
+        layerId: "b",
+        airAssist: false,
+        moves: [cut(10, 10, 300, 100), cut(10, 0, 300, 100)],
+      },
     ],
   },
-};
+  6000,
+);
 
 /** Zig-zag cuts with a rapid every 100 moves: `count` moves over three layers. */
 function bigToolpath(count: number): Toolpath {
@@ -36,9 +41,8 @@ function bigToolpath(count: number): Toolpath {
     moves.push(i % 100 === 0 ? rapid(x, y) : cut(x, y, 1000 + (i % 7) * 100, i % 101));
   }
   const third = Math.ceil(count / 3);
-  return {
-    rapidRate: 5000,
-    plan: {
+  return atFeedRate(
+    {
       start: { x: 0, y: 0 },
       layers: [0, 1, 2].map((n) => ({
         layerId: `layer-${n}`,
@@ -46,11 +50,12 @@ function bigToolpath(count: number): Toolpath {
         moves: moves.slice(n * third, (n + 1) * third),
       })),
     },
-  };
+    5000,
+  );
 }
 
 describe("toolpath timeline", () => {
-  it("times rapids at the rapid rate and cuts at their feed", () => {
+  it("times each move as the toolpath's estimate says", () => {
     const timeline = buildTimeline(square);
     expect(timeline.count).toBe(5);
     expect([...timeline.ends]).toEqual([
@@ -66,6 +71,19 @@ describe("toolpath timeline", () => {
       { layerId: "a", first: 0, end: 3, start: 0 },
       { layerId: "b", first: 3, end: 5, start: expect.closeTo(2.1) },
     ]);
+  });
+
+  it("uses the estimate's move times, which allow for acceleration", () => {
+    const timeline = buildTimeline({ ...square, moveSeconds: [1, 2, 3, 4, 5] });
+    expect([...timeline.ends]).toEqual([1, 3, 6, 10, 15]);
+    expect(timeline.duration).toBe(15);
+  });
+
+  it("times each layer", () => {
+    const timeline = buildTimeline(square);
+    expect(layerDuration(timeline, 0)).toBeCloseTo(2.1);
+    expect(layerDuration(timeline, 1)).toBeCloseTo(4);
+    expect(layerDuration(timeline, 2)).toBe(0);
   });
 
   it("finds the head, the move in progress and the layer at any time", () => {
@@ -104,10 +122,7 @@ describe("toolpath timeline", () => {
   });
 
   it("handles an empty plan", () => {
-    const timeline = buildTimeline({
-      rapidRate: 1000,
-      plan: { start: { x: 1, y: 2 }, layers: [] },
-    });
+    const timeline = buildTimeline(atFeedRate({ start: { x: 1, y: 2 }, layers: [] }, 1000));
     expect(timeline.duration).toBe(0);
     expect(pointAt(timeline, 5)).toEqual({
       time: 0,

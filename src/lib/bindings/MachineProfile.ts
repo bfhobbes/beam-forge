@@ -44,6 +44,11 @@ maxRate: AxisValues,
  */
 acceleration: AxisValues, 
 /**
+ * `$11`, in mm: how far GRBL lets the head cut a corner, which sets how
+ * fast it may take one.
+ */
+junctionDeviation: number, 
+/**
  * `$22`.
  */
 homing: boolean, 

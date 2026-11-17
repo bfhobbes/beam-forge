@@ -73,6 +73,9 @@ pub struct MachineProfile {
     pub max_rate: AxisValues,
     /// `$120`-`$122`, in mm/s².
     pub acceleration: AxisValues,
+    /// `$11`, in mm: how far GRBL lets the head cut a corner, which sets how
+    /// fast it may take one.
+    pub junction_deviation: f64,
     /// `$22`.
     pub homing: bool,
     /// The command that turns air assist on, usually `M8` (flood) or `M7`.
@@ -112,6 +115,7 @@ impl Default for MachineProfile {
                 y: 10.0,
                 z: 10.0,
             },
+            junction_deviation: 0.010,
             homing: false,
             air_assist: "M8".to_string(),
             user_origin: None,
@@ -181,6 +185,7 @@ impl MachineProfile {
                 *field = value;
             }
         };
+        number(11, &mut self.junction_deviation);
         number(30, &mut self.max_spindle);
         number(31, &mut self.min_spindle);
         flag(32, &mut self.laser_mode);
@@ -218,6 +223,9 @@ impl MachineProfile {
         let axes = |a: AxisValues| positive(a.x) && positive(a.y) && positive(a.z);
         if !axes(self.max_rate) || !axes(self.acceleration) {
             return fail("Max rates and accelerations must be more than 0.");
+        }
+        if !self.junction_deviation.is_finite() || self.junction_deviation < 0.0 {
+            return fail("The junction deviation can't be negative.");
         }
         let air = self.air_assist.trim();
         if air.is_empty() || air.contains(['\r', '\n']) {
@@ -372,6 +380,7 @@ mod tests {
     fn connecting_creates_a_profile_from_the_settings_report() {
         let store = temp_store();
         let settings = report(&[
+            "$11=0.020",
             "$22=1",
             "$30=1000",
             "$31=0",
@@ -400,6 +409,7 @@ mod tests {
         assert!(profile.laser_mode && profile.homing);
         assert_eq!(profile.max_rate.y, 5000.0);
         assert_eq!(profile.acceleration.x, 500.0);
+        assert_eq!(profile.junction_deviation, 0.02);
         assert_eq!(store.load("serial-com3"), Some(profile));
     }
 
@@ -506,5 +516,6 @@ mod tests {
         let profile = store.load("old").unwrap();
         assert!(profile.laser_mode);
         assert_eq!(profile.air_assist, "M8");
+        assert_eq!(profile.junction_deviation, 0.01, "GRBL's default $11");
     }
 }

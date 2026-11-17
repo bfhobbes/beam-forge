@@ -149,6 +149,8 @@
       <dd class="tabular-nums">
         {accel(profile.acceleration.x)} / {accel(profile.acceleration.y)}
       </dd>
+      <dt class="text-muted-foreground">Junction deviation ($11)</dt>
+      <dd class="tabular-nums">{profile.junctionDeviation} mm</dd>
     </dl>
   </section>
 

@@ -5,6 +5,7 @@ import type { RunPlan } from "#lib/bindings/gcode/RunPlan.js";
 import type { Point } from "#lib/bindings/project/Point.js";
 import {
   buildTimeline,
+  clock,
   pointAfter,
   type PlaybackPoint,
   type Timeline,
@@ -16,8 +17,33 @@ export interface RunOutcome {
   state: JobState;
   /** Wall-clock time the job took. */
   actualMs: number;
-  /** The feed-rate estimate it started with. */
+  /** The estimate it started with. */
   estimateMs: number;
+}
+
+/** How far off the estimate was: `+0.05` when the job took 5% longer. Null without an estimate. */
+export function estimateError(outcome: RunOutcome): number | null {
+  return outcome.estimateMs > 0 ? outcome.actualMs / outcome.estimateMs - 1 : null;
+}
+
+/** `+5%`, `-12%`, `±0%`. */
+export function formatError(error: number): string {
+  const percent = Math.round(error * 100);
+  return percent === 0 ? "±0%" : `${percent > 0 ? "+" : "−"}${Math.abs(percent)}%`;
+}
+
+/**
+ * A finished run's time against its estimate, for the machine console, so
+ * the estimator can be checked against the real machine. Null for a run
+ * that didn't finish: it says nothing about the estimate.
+ */
+export function outcomeNote(name: string, outcome: RunOutcome): string | null {
+  const error = estimateError(outcome);
+  if (outcome.state.state !== "finished" || error === null) return null;
+  return (
+    `${name} finished in ${clock(outcome.actualMs / 1000)}, ` +
+    `estimated ${clock(outcome.estimateMs / 1000)} (${formatError(error)})`
+  );
 }
 
 function isDone(state: JobState): boolean {
@@ -29,9 +55,8 @@ function isDone(state: JobState): boolean {
  * head, the current layer and the time left. Fed the job's progress and the
  * machine's status reports.
  *
- * Times come from the toolpath timeline: programmed feed and rapid rates
- * without acceleration, so they run
- * short on jobs with many small moves.
+ * Times come from the toolpath timeline: the desktop app's estimate from
+ * the machine profile's rates and accelerations.
  */
 export class DesignRun {
   readonly plan: RunPlan;
@@ -56,7 +81,7 @@ export class DesignRun {
     return this.outcome !== null;
   }
 
-  /** Seconds the whole job takes at feed rate. */
+  /** Estimated seconds for the whole job. */
   get estimate(): number {
     return this.timeline.duration;
   }
@@ -72,7 +97,7 @@ export class DesignRun {
     return this.point.layer;
   }
 
-  /** Seconds left at feed rate, from where the head is. */
+  /** Estimated seconds left, from where the head is. */
   get remaining(): number {
     if (this.done) return 0;
     return Math.max(0, this.estimate - timeAtHead(this.timeline, this.completed, this.head));

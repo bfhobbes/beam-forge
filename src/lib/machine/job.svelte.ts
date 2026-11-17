@@ -6,7 +6,8 @@ import type { Preflight } from "#lib/bindings/Preflight.js";
 import { lifecycle as appLifecycle, type Lifecycle } from "#lib/desktop/lifecycle.svelte.js";
 import { jobAdapter, type DocumentJob, type FrameRequest, type JobAdapter } from "./job-adapter.js";
 import { clampOverride } from "./overrides.js";
-import { DesignRun } from "./run.svelte.js";
+import { machineConsole } from "./console.svelte.js";
+import { DesignRun, outcomeNote } from "./run.svelte.js";
 
 /** Why close and updates are refused while a job runs. */
 export const BUSY_REASON = "Running job";
@@ -75,9 +76,13 @@ export class MachineJob {
   /** Progress events seen, to tell whether one arrived while a job started. */
   #updates = 0;
 
-  constructor(adapter: JobAdapter, lifecycle: Lifecycle) {
+  readonly #log: (note: string) => void;
+
+  /** `log` records each finished design run's time against its estimate. */
+  constructor(adapter: JobAdapter, lifecycle: Lifecycle, log: (note: string) => void = () => {}) {
     this.#adapter = adapter;
     this.#lifecycle = lifecycle;
+    this.#log = log;
   }
 
   /** True from the start of a job until its last progress. */
@@ -125,7 +130,7 @@ export class MachineJob {
       const plan = await this.#adapter.runDocument(job);
       const run = new DesignRun(plan);
       // The job's first progress may have arrived before its plan.
-      if (this.#updates !== seen && this.progress) run.onProgress(this.progress);
+      if (this.#updates !== seen && this.progress) this.#follow(run, this.progress);
       this.run = run;
     }, true);
   }
@@ -198,9 +203,18 @@ export class MachineJob {
   #update(progress: JobProgress): void {
     this.#updates++;
     this.progress = progress;
-    this.run?.onProgress(progress);
+    if (this.run) this.#follow(this.run, progress);
     if (isDone(progress.state)) this.overrideTargets = {};
     this.#setBusy(!isDone(progress.state));
+  }
+
+  /** Feeds a design run its progress, logging how its time compared with the estimate once it finishes. */
+  #follow(run: DesignRun, progress: JobProgress): void {
+    const ended = run.done;
+    run.onProgress(progress);
+    if (ended || !run.outcome) return;
+    const note = outcomeNote(run.name, run.outcome);
+    if (note) this.#log(note);
   }
 
   #setBusy(busy: boolean): void {
@@ -213,4 +227,6 @@ export class MachineJob {
   }
 }
 
-export const machineJob = new MachineJob(jobAdapter, appLifecycle);
+export const machineJob = new MachineJob(jobAdapter, appLifecycle, (note) =>
+  machineConsole.note(note),
+);

@@ -1,11 +1,15 @@
 //! GCode generation commands over `bf_core::gcode`: a summary for the job
-//! dialog, the toolpath preview's moves, and export to a file. Running a generated job on the machine is
+//! dialog, the job's time estimate, the toolpath preview's moves, and export
+//! to a file. Running a generated job on the machine is
 //! `machine::job::machine_run_document`.
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use bf_core::gcode::{GeneratedJob, JobPlacement, JobSummary, Toolpath, generate, toolpath};
+use bf_core::estimate::JobEstimate;
+use bf_core::gcode::{
+    GeneratedJob, JobPlacement, JobSummary, Toolpath, estimate, generate, toolpath,
+};
 use bf_core::machine::MachineProfile;
 use bf_core::project::DesignDocument;
 use tauri::{AppHandle, Manager, Runtime};
@@ -63,6 +67,20 @@ pub fn gcode_toolpath<R: Runtime>(
 ) -> Result<Toolpath, String> {
     let profile = profile.unwrap_or_default();
     toolpath(&document, &profile, placement, Machine::work_position(&app))
+        .map_err(|error| error.to_string())
+}
+
+/// How long the job would take on the profile's machine, by layer, for the
+/// top bar. Placed as `gcode_summary` places the job.
+#[tauri::command]
+pub fn gcode_estimate<R: Runtime>(
+    app: AppHandle<R>,
+    document: DesignDocument,
+    profile: Option<MachineProfile>,
+    placement: JobPlacement,
+) -> Result<JobEstimate, String> {
+    let profile = profile.unwrap_or_default();
+    estimate(&document, &profile, placement, Machine::work_position(&app))
         .map_err(|error| error.to_string())
 }
 

@@ -4,28 +4,34 @@ import { emptyDocument } from "#lib/document/model.js";
 import { DEFAULT_PLACEMENT } from "#lib/gcode/job-setup.svelte.js";
 import { PREVIEW_NO_TOOLPATH, previewToolpath, type ToolpathAdapter } from "./adapter.js";
 import { ToolpathPreview } from "./preview.svelte.js";
+import { atFeedRate } from "./fixtures.js";
 
 /** 10 mm at 600 mm/min: one second. */
-const oneSecond = (layerId = "a"): Toolpath => ({
-  rapidRate: 6000,
-  plan: {
-    start: { x: 0, y: 0 },
-    layers: [
-      {
-        layerId,
-        airAssist: false,
-        moves: [{ kind: "cut", to: { x: 10, y: 0 }, power: 50, speed: 600 }],
-      },
-    ],
-  },
-});
+const oneSecond = (layerId = "a"): Toolpath =>
+  atFeedRate(
+    {
+      start: { x: 0, y: 0 },
+      layers: [
+        {
+          layerId,
+          airAssist: false,
+          moves: [{ kind: "cut", to: { x: 10, y: 0 }, power: 50, speed: 600 }],
+        },
+      ],
+    },
+    6000,
+  );
 
 function preview(adapter: ToolpathAdapter) {
   const requests: unknown[] = [];
   const store = new ToolpathPreview({
     adapter,
     request: () => {
-      const request = { document: emptyDocument(), profile: null, placement: DEFAULT_PLACEMENT };
+      const request = {
+        document: emptyDocument(),
+        profile: null,
+        placement: DEFAULT_PLACEMENT,
+      };
       requests.push(request);
       return request;
     },
