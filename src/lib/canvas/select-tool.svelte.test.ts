@@ -27,7 +27,7 @@ function setup() {
   const editor = new DocumentEditor(new Lifecycle());
   editor.execute(insert([rect("a"), rect("b", translate(50, 0))]));
   editor.load(editor.doc); // a clean history
-  const selection = new Selection(() => editor.doc);
+  const selection = new Selection(editor);
   const tool = new SelectTool(editor, selection);
   const scene = () => buildScene(editor.doc);
   const press = (x: number, y: number, shift = false, alt = false) =>

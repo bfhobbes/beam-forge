@@ -21,7 +21,7 @@ function slowAdapter() {
 
 function setup(adapter: TextAdapter = slowAdapter().adapter) {
   const editor = new DocumentEditor(new Lifecycle());
-  const selection = new Selection(() => editor.doc);
+  const selection = new Selection(editor);
   const editing = new TextEditing(editor, selection, new DrawingLayer(), adapter);
   return { editor, selection, editing };
 }
