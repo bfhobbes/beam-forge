@@ -123,14 +123,25 @@ fn a_later_line_can_be_answered_with_an_error() {
 fn the_door_holds_a_job_until_closed_and_resumed() {
     let mut sim = sim();
     burning(&mut sim);
-    inject(&mut sim, Fault::Door { open: true });
+    assert_eq!(
+        inject(&mut sim, Fault::Door { open: true }),
+        "[MSG:Check Door]\r\n"
+    );
     assert_eq!(sim.state(), MachineState::Door(1));
     run(&mut sim, Duration::from_secs(1));
     assert!(send(&mut sim, b"?").starts_with("<Door:1|"));
+    assert_eq!(sim.laser_power(), 0.0);
+    assert!(!sim.air_assist());
     inject(&mut sim, Fault::Door { open: false });
     assert!(send(&mut sim, b"?").starts_with("<Door:0|"));
+    // Air assist comes back first, with GRBL's 1 s coolant delay.
     send(&mut sim, b"~");
+    assert_eq!(sim.state(), MachineState::Door(3));
+    assert!(sim.air_assist());
+    run(&mut sim, Duration::from_secs(1));
     assert_eq!(sim.state(), MachineState::Run);
+    run(&mut sim, Duration::from_millis(100));
+    assert!(sim.laser_power() > 0.0);
 }
 
 #[test]

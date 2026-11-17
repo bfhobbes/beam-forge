@@ -47,6 +47,12 @@ const ALARM_SOFT_LIMIT: u8 = 2;
 /// Alarm raised when a reset interrupts motion.
 const ALARM_ABORT_CYCLE: u8 = 3;
 
+/// GRBL's `SAFETY_DOOR_SPINDLE_DELAY` and `SAFETY_DOOR_COOLANT_DELAY`: how
+/// long a door resume waits after restarting each (the spindle only
+/// outside laser mode).
+const DOOR_SPINDLE_DELAY: Duration = Duration::from_secs(4);
+const DOOR_COOLANT_DELAY: Duration = Duration::from_secs(1);
+
 /// Controller state, as shown at the start of a status report.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MachineState {
@@ -56,8 +62,9 @@ pub enum MachineState {
     Hold(u8),
     Jog,
     Alarm,
-    /// `Door:0` closed and ready to resume, `Door:1` ajar. GRBL's parking
-    /// sub-states 2 and 3 are not modelled: lasers don't park a spindle.
+    /// `Door:0` closed and ready to resume, `Door:1` ajar, `Door:3`
+    /// restoring the laser and air assist after a resume. GRBL's `Door:2`
+    /// (parking, or still stopping) is not modelled: lasers don't park.
     Door(u8),
     Check,
     Home,
@@ -243,6 +250,16 @@ enum Op {
     Ok,
 }
 
+/// A door resume restarting powered outputs (`Door:3`), as GRBL's suspend
+/// loop does: the spindle, then coolant, each followed by its delay.
+#[derive(Debug, Clone, Copy)]
+struct DoorRestore {
+    /// When air assist comes back on, if it has yet to.
+    coolant_at: Option<Duration>,
+    /// When the cycle resumes.
+    resume_at: Duration,
+}
+
 /// Why the machine is decelerating to a stop.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum StopReason {
@@ -275,6 +292,10 @@ pub struct Simulator {
     motion: Motion,
     ops: VecDeque<Op>,
     dwell_until: Option<Duration>,
+    /// A dwell's time left while the door suspends it: GRBL's dwell loop
+    /// blocks in the suspend loop, so the dwell resumes where it stopped.
+    dwell_paused: Option<Duration>,
+    door_restore: Option<DoorRestore>,
     stop_reason: Option<StopReason>,
     /// After a soft limit GRBL ignores everything but reset.
     critical: bool,
@@ -324,6 +345,8 @@ impl Simulator {
             motion: Motion::default(),
             ops: VecDeque::new(),
             dwell_until: None,
+            dwell_paused: None,
+            door_restore: None,
             stop_reason: None,
             critical: false,
             gc_position: [0.0; 3],
@@ -445,6 +468,9 @@ impl Simulator {
                 self.now = at;
                 self.dwell_until = None;
                 continue;
+            } else if let Some(at) = self.door_restore_deadline().filter(|&at| at <= until) {
+                self.now = at;
+                continue;
             }
             if deadline.is_some() {
                 self.now = until;
@@ -535,7 +561,7 @@ impl Simulator {
     /// closing it moves to `Door:0`, where `~` resumes.
     pub fn set_door_open(&mut self, open: bool) {
         self.door_open = open;
-        if open && !matches!(self.state, MachineState::Alarm | MachineState::Sleep) {
+        if open && self.door_acts() {
             self.enter_door();
         } else if !open && self.state == MachineState::Door(1) {
             self.set_state(MachineState::Door(0));
@@ -551,6 +577,8 @@ impl Simulator {
             && self.ops.is_empty()
             && self.motion.is_empty()
             && self.dwell_until.is_none()
+            && self.dwell_paused.is_none()
+            && self.door_restore.is_none()
             && !self.motion_active()
     }
 
@@ -570,6 +598,7 @@ impl Simulator {
         for byte in std::mem::take(&mut self.realtime) {
             self.realtime_command(byte);
         }
+        self.run_door_restore();
         self.run_ops();
         self.fire_scenario();
         self.read_lines();
@@ -585,6 +614,7 @@ impl Simulator {
             && !self.critical
             && self.stop_reason != Some(StopReason::SoftLimit)
             && self.state != MachineState::Sleep
+            && !self.suspended_by_door()
             && !self.stalled()
     }
 
@@ -658,7 +688,7 @@ impl Simulator {
     /// Runs queued line effects until one has to wait.
     fn run_ops(&mut self) {
         while let Some(op) = self.ops.front().cloned() {
-            if self.dwell_until.is_some() {
+            if self.dwell_until.is_some() || self.suspended_by_door() {
                 return;
             }
             match op {
@@ -844,6 +874,9 @@ impl Simulator {
             Some(StopReason::SoftLimit) => self.soft_limit_alarm(),
             Some(StopReason::Door) | None => {}
         }
+        if matches!(self.state, MachineState::Door(_)) {
+            self.door_stopped();
+        }
     }
 
     /// The machine has stopped in a feed hold. With `DISABLE_LASER_DURING_HOLD`
@@ -894,11 +927,27 @@ impl Simulator {
         }
     }
 
-    /// The safety door holds running motion and cancels jogs.
+    /// GRBL acts on the door everywhere but alarm, sleep and check mode.
+    fn door_acts(&self) -> bool {
+        !matches!(
+            self.state,
+            MachineState::Alarm | MachineState::Sleep | MachineState::Check
+        )
+    }
+
+    /// The safety door holds running motion and cancels jogs. Once the
+    /// machine has stopped, the laser and air assist go off. Opening it
+    /// again while a resume restores them starts over.
     fn enter_door(&mut self) {
+        self.send_line("[MSG:Check Door]");
         // GRBL's door routine clears any spindle stop override.
         self.spindle_stopped = false;
         self.spindle_stop_requested = false;
+        self.door_restore = None;
+        // A dwell blocks in GRBL's suspend loop until the resume.
+        if let Some(at) = self.dwell_until.take() {
+            self.dwell_paused = Some(at.saturating_sub(self.now));
+        }
         let was = self.state;
         self.set_state(MachineState::Door(u8::from(self.door_open)));
         if self.stop_reason.is_none() {
@@ -908,6 +957,92 @@ impl Simulator {
                 _ => {}
             }
         }
+        if self.stop_reason.is_none() {
+            self.door_stopped();
+        }
+    }
+
+    /// The door's hold is complete: GRBL's suspend loop de-energizes the
+    /// spindle and coolant (`spindle_set_state(SPINDLE_DISABLE)`,
+    /// `coolant_set_state(COOLANT_DISABLE)`). The program keeps its
+    /// `M3`/`M4` and `M7`/`M8`, which the resume restores.
+    fn door_stopped(&mut self) {
+        // The direction output stays as it was; only the PWM stops.
+        self.laser = Pwm::OFF;
+        self.flood = false;
+        self.mist = false;
+        self.ovr_counter = 0;
+    }
+
+    /// Lines, their effects and dwells wait while the door holds the
+    /// machine, as GRBL's main loop blocks in its suspend loop.
+    fn suspended_by_door(&self) -> bool {
+        matches!(self.state, MachineState::Door(_))
+    }
+
+    /// `~` with the door closed: GRBL restarts what the door stopped
+    /// (`Door:3`), then resumes. An `M3`/`M4` laser in laser mode comes
+    /// back with the next motion, so needs no delay; otherwise the spindle
+    /// restarts and waits 4 s. Air assist (`M7`/`M8`) restarts and waits
+    /// 1 s, even in laser mode. Unlike the spindle stop override, GRBL
+    /// sends no `[MSG:Restoring spindle]` here.
+    fn begin_door_restore(&mut self) {
+        self.set_state(MachineState::Door(3));
+        let mut at = self.now;
+        if self.modal.spindle != Spindle::Off && !self.profile.settings.laser_mode() {
+            self.set_spindle(self.modal.spindle, self.modal.speed);
+            at += DOOR_SPINDLE_DELAY;
+        }
+        let coolant_at = (self.modal.flood || self.modal.mist).then_some(at);
+        if coolant_at.is_some() {
+            at += DOOR_COOLANT_DELAY;
+        }
+        self.door_restore = Some(DoorRestore {
+            coolant_at,
+            resume_at: at,
+        });
+        self.run_door_restore();
+    }
+
+    /// When a door restore next has something to do.
+    fn door_restore_deadline(&self) -> Option<Duration> {
+        let restore = self.door_restore?;
+        Some(restore.coolant_at.unwrap_or(restore.resume_at))
+    }
+
+    /// Carries out the steps of a door restore that are due.
+    fn run_door_restore(&mut self) {
+        let Some(mut restore) = self.door_restore.take() else {
+            return;
+        };
+        if self.state != MachineState::Door(3) {
+            return;
+        }
+        if restore.coolant_at.is_some_and(|at| at <= self.now) {
+            self.flood = self.modal.flood;
+            self.mist = self.modal.mist;
+            self.ovr_counter = 0;
+            restore.coolant_at = None;
+        }
+        if restore.coolant_at.is_none() && restore.resume_at <= self.now {
+            self.resume_cycle();
+        } else {
+            self.door_restore = Some(restore);
+        }
+    }
+
+    /// Leaves a completed hold or door: back to running the queue, or idle,
+    /// and a dwell the door suspended carries on.
+    fn resume_cycle(&mut self) {
+        if let Some(left) = self.dwell_paused.take() {
+            self.dwell_until = Some(self.now + left);
+        }
+        let next = if self.motion.is_empty() {
+            MachineState::Idle
+        } else {
+            MachineState::Run
+        };
+        self.set_state(next);
     }
 
     // ---- $ system commands ----
@@ -1174,24 +1309,24 @@ impl Simulator {
     }
 
     fn cycle_start(&mut self) {
-        if matches!(self.state, MachineState::Hold(0) | MachineState::Door(0))
-            && self.stop_reason.is_none()
-        {
-            // A laser stopped for the hold comes back: in laser mode with the
-            // next motion, otherwise at once.
-            self.spindle_stop_requested = false;
-            if std::mem::take(&mut self.spindle_stopped) && self.modal.spindle != Spindle::Off {
-                self.send_line("[MSG:Restoring spindle]");
-                if !self.profile.settings.laser_mode() {
-                    self.set_spindle(self.modal.spindle, self.modal.speed);
+        if self.stop_reason.is_some() {
+            return;
+        }
+        match self.state {
+            MachineState::Hold(0) => {
+                // A laser stopped for the hold comes back: in laser mode with
+                // the next motion, otherwise at once.
+                self.spindle_stop_requested = false;
+                if std::mem::take(&mut self.spindle_stopped) && self.modal.spindle != Spindle::Off {
+                    self.send_line("[MSG:Restoring spindle]");
+                    if !self.profile.settings.laser_mode() {
+                        self.set_spindle(self.modal.spindle, self.modal.speed);
+                    }
                 }
+                self.resume_cycle();
             }
-            let next = if self.motion.is_empty() {
-                MachineState::Idle
-            } else {
-                MachineState::Run
-            };
-            self.set_state(next);
+            MachineState::Door(0) => self.begin_door_restore(),
+            _ => {}
         }
     }
 
@@ -1202,11 +1337,10 @@ impl Simulator {
         }
     }
 
+    /// `0x84`. In the door state already, GRBL repeats `[MSG:Check Door]`
+    /// and, mid-restore, stops the outputs again.
     fn safety_door(&mut self) {
-        if !matches!(
-            self.state,
-            MachineState::Alarm | MachineState::Sleep | MachineState::Door(_)
-        ) {
+        if self.door_acts() {
             self.enter_door();
         }
     }
@@ -1494,6 +1628,8 @@ impl Simulator {
         self.gc_position = self.motion.position_at(self.now);
         self.ops.clear();
         self.dwell_until = None;
+        self.dwell_paused = None;
+        self.door_restore = None;
         self.stop_reason = None;
         self.critical = false;
         self.spindle_dir = Spindle::Off;
