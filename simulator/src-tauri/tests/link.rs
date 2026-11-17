@@ -1,7 +1,9 @@
 //! The fake USB link, driven by a real TCP client.
 
-use std::io::{ErrorKind, Read, Write};
-use std::net::{SocketAddr, TcpStream};
+use std::io::{Read, Write};
+use std::net::{Shutdown, SocketAddr, TcpStream};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
+use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 use bf_sim::Profile;
@@ -17,49 +19,84 @@ fn host() -> (Host, SocketAddr) {
     (host, address)
 }
 
-fn connect(address: SocketAddr) -> TcpStream {
+/// A test client. It reads on its own thread with plain blocking reads, as the
+/// app's transport does: on Windows a read that times out can leave the socket
+/// unusable (os error 997), so the socket never gets a read timeout. Dropping
+/// the client shuts the socket, which ends the reader.
+struct Client {
+    stream: TcpStream,
+    received: Receiver<Vec<u8>>,
+    reader: Option<JoinHandle<()>>,
+}
+
+impl Client {
+    fn write_all(&mut self, bytes: &[u8]) -> std::io::Result<()> {
+        self.stream.write_all(bytes)
+    }
+}
+
+impl Drop for Client {
+    fn drop(&mut self) {
+        let _ = self.stream.shutdown(Shutdown::Both);
+        if let Some(reader) = self.reader.take() {
+            let _ = reader.join();
+        }
+    }
+}
+
+fn connect(address: SocketAddr) -> Client {
     let stream = TcpStream::connect(address).unwrap();
-    stream
-        .set_read_timeout(Some(Duration::from_millis(50)))
-        .unwrap();
-    stream
+    let mut socket = stream.try_clone().unwrap();
+    let (sender, received) = mpsc::channel();
+    let reader = thread::spawn(move || {
+        let mut buffer = [0; 1024];
+        // Ends when the server closes, on the shutdown from `Drop`, or once
+        // nobody is listening.
+        while let Ok(n @ 1..) = socket.read(&mut buffer) {
+            if sender.send(buffer[..n].to_vec()).is_err() {
+                break;
+            }
+        }
+    });
+    Client {
+        stream,
+        received,
+        reader: Some(reader),
+    }
 }
 
 /// Reads until `done` accepts what has arrived, or the connection closes.
-fn read_until(stream: &mut TcpStream, done: impl Fn(&str) -> bool) -> String {
+fn read_until(client: &mut Client, done: impl Fn(&str) -> bool) -> String {
     let deadline = Instant::now() + TIMEOUT;
     let mut received = Vec::new();
-    let mut buffer = [0; 1024];
     while !done(&String::from_utf8_lossy(&received)) {
-        assert!(
-            Instant::now() < deadline,
-            "timed out; received {:?}",
-            String::from_utf8_lossy(&received)
-        );
-        match stream.read(&mut buffer) {
-            Ok(0) => break,
-            Ok(n) => received.extend_from_slice(&buffer[..n]),
-            Err(e) if matches!(e.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) => {}
-            Err(e) => panic!("read failed: {e}"),
+        let left = deadline.saturating_duration_since(Instant::now());
+        match client.received.recv_timeout(left) {
+            Ok(bytes) => received.extend_from_slice(&bytes),
+            Err(RecvTimeoutError::Disconnected) => break,
+            Err(RecvTimeoutError::Timeout) => panic!(
+                "timed out; received {:?}",
+                String::from_utf8_lossy(&received)
+            ),
         }
     }
     String::from_utf8(received).unwrap()
 }
 
-fn read_banner(stream: &mut TcpStream) {
-    assert_eq!(read_until(stream, |s| s.ends_with(BANNER)), BANNER);
+fn read_banner(client: &mut Client) {
+    assert_eq!(read_until(client, |s| s.ends_with(BANNER)), BANNER);
 }
 
-fn status(stream: &mut TcpStream) -> String {
-    stream.write_all(b"?").unwrap();
-    read_until(stream, |s| s.ends_with(">\r\n"))
+fn status(client: &mut Client) -> String {
+    client.write_all(b"?").unwrap();
+    read_until(client, |s| s.ends_with(">\r\n"))
 }
 
 fn wait_for(what: &str, condition: impl Fn() -> bool) {
     let deadline = Instant::now() + TIMEOUT;
     while !condition() {
         assert!(Instant::now() < deadline, "timed out waiting for {what}");
-        std::thread::sleep(Duration::from_millis(10));
+        thread::sleep(Duration::from_millis(10));
     }
 }
 
