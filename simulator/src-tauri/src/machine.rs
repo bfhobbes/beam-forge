@@ -314,11 +314,16 @@ impl Machine {
     }
 }
 
-/// States that change on their own as time passes.
+/// States that change on their own as time passes. `Door:3` restores the
+/// laser and air assist after a door resume, with GRBL's delays.
 fn busy(state: MachineState) -> bool {
     matches!(
         state,
-        MachineState::Run | MachineState::Jog | MachineState::Home | MachineState::Hold(1)
+        MachineState::Run
+            | MachineState::Jog
+            | MachineState::Home
+            | MachineState::Hold(1)
+            | MachineState::Door(3)
     )
 }
 
@@ -357,6 +362,23 @@ mod tests {
         assert_eq!(snapshot.machine_position, [100.0, 0.0, 0.0]);
         // 100 mm at 10 mm/s takes at least 10 s, and not much more.
         assert!((10_000.0..11_000.0).contains(&snapshot.clock_ms));
+    }
+
+    #[test]
+    fn instant_speed_runs_a_door_restore_through() {
+        let (mut machine, start) = machine();
+        machine.set_speed(Speed::Instant, start);
+        machine.feed(b"M8\n");
+        machine.pump(start);
+        machine.inject("door open").unwrap();
+        machine.inject("door closed").unwrap();
+        machine.pump(start);
+        assert!(!machine.snapshot().air_assist);
+        machine.feed(b"~");
+        machine.pump(start);
+        let snapshot = machine.snapshot();
+        assert_eq!(snapshot.state, "Idle");
+        assert!(snapshot.air_assist);
     }
 
     #[test]

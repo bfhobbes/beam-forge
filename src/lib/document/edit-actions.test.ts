@@ -22,7 +22,7 @@ const rect = (id: string): SceneObject => ({
 function setup() {
   const editor = new DocumentEditor(new Lifecycle());
   editor.execute(insert([rect("a"), rect("b")]));
-  const selection = new Selection(() => editor.doc);
+  const selection = new Selection(editor);
   const list = editActions(editor, selection);
   const action = (id: string): Action => {
     const found = list.find((candidate) => candidate.id === id);

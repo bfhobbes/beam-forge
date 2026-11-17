@@ -2,7 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { Lifecycle } from "#lib/desktop/lifecycle.svelte.js";
 import { insert, remove } from "./commands.js";
 import { DocumentEditor } from "./editor.svelte.js";
-import type { SceneObject } from "./model.js";
+import { emptyDocument, type SceneObject } from "./model.js";
 import { Selection } from "./selection.svelte.js";
 import { IDENTITY } from "./transform.js";
 
@@ -20,7 +20,7 @@ const rect = (id: string): SceneObject => ({
 function setup() {
   const editor = new DocumentEditor(new Lifecycle());
   editor.execute(insert([rect("a"), rect("b"), rect("c")]));
-  return { editor, selection: new Selection(() => editor.doc) };
+  return { editor, selection: new Selection(editor) };
 }
 
 describe("selection", () => {
@@ -52,5 +52,24 @@ describe("selection", () => {
     expect(selection.ids).toEqual(["b"]);
     editor.undo();
     expect(selection.ids).toEqual(["a", "b"]);
+  });
+
+  it("empties when a document is loaded, even one with the same ids", () => {
+    const { editor, selection } = setup();
+    selection.set(["a", "b"]);
+    editor.load({ ...emptyDocument(), objects: [rect("a"), rect("b")] });
+    expect(selection.ids).toEqual([]);
+    expect(selection.has("a")).toBe(false);
+    selection.toggle("a");
+    expect(selection.ids).toEqual(["a"]);
+  });
+
+  it("does not bring back a selection from before a load when undoing", () => {
+    const { editor, selection } = setup();
+    selection.set(["a"]);
+    editor.load({ ...emptyDocument(), objects: [rect("a"), rect("b")] });
+    editor.execute(remove(["b"]));
+    editor.undo();
+    expect(selection.ids).toEqual([]);
   });
 });
