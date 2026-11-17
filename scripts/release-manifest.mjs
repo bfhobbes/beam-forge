@@ -1,9 +1,9 @@
 // Writes the updater manifest (latest.json) for a GitHub release built on
-// every platform. Packages are linked through the GitHub API asset URLs,
-// because the repository is private: the app downloads them with its
-// read-only token. Each package's signature is checked against the release
-// public key first, so a manifest never points the updater at a package it
-// would reject.
+// every platform. Packages are linked by their public download URLs
+// (`browser_download_url`), which need no credentials and, unlike the API
+// asset URLs, no API rate limit. Each package's signature is checked against
+// the release public key first, so a manifest never points the updater at a
+// package it would reject.
 //
 //   node scripts/release-manifest.mjs <tag> <bundles-dir> <output> [--dry-run]
 //
@@ -112,14 +112,17 @@ export function findPackages(dir, version, publicKey) {
 
 /**
  * The manifest for `release` (GitHub's release JSON: `body`, `published_at`
- * and `assets` of `{ name, url }`).
+ * and `assets` of `{ name, browser_download_url }`).
  */
 export function buildManifest({ version, release, found }) {
   const platforms = {};
   for (const [platform, suffix] of Object.entries(packages(version))) {
     const asset = release.assets.find((a) => isPackage(a.name, suffix));
     if (!asset) throw new Error(`The release has no asset ending in ${suffix}.`);
-    platforms[platform] = { signature: found[platform].signature, url: asset.url };
+    platforms[platform] = {
+      signature: found[platform].signature,
+      url: asset.browser_download_url,
+    };
   }
   for (const [alias, platform] of Object.entries(aliases)) platforms[alias] = platforms[platform];
   return {
@@ -144,7 +147,7 @@ function main(args) {
         body: `Dry run of Beam Forge ${version}`,
         assets: Object.values(found).map(({ name }) => ({
           name,
-          url: `https://example.invalid/dry-run/${encodeURIComponent(name)}`,
+          browser_download_url: `https://example.invalid/dry-run/${encodeURIComponent(name)}`,
         })),
       }
     : JSON.parse(

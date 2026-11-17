@@ -92,19 +92,11 @@ fn commands<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> 
         ])
 }
 
-/// Releases live in the private GitHub repository, so release builds embed a
-/// read-only token (`BEAM_FORGE_UPDATE_TOKEN` at compile time) for the
-/// update manifest and packages. Other builds send no credentials.
+/// The updater. Releases are public GitHub releases, so it sends no
+/// credentials; packages are trusted by their signatures alone.
 fn updater_plugin<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R, tauri_plugin_updater::Config>
 {
-    let builder = tauri_plugin_updater::Builder::new();
-    match option_env!("BEAM_FORGE_UPDATE_TOKEN") {
-        Some(token) if !token.is_empty() => builder
-            .header("Authorization", format!("Bearer {token}"))
-            .expect("The update token must be a valid header value"),
-        _ => builder,
-    }
-    .build()
+    tauri_plugin_updater::Builder::new().build()
 }
 
 pub fn run() {
