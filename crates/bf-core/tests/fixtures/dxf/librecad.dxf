@@ -1,0 +1,372 @@
+999
+dxfrw 0.6.3
+  0
+SECTION
+  2
+HEADER
+  9
+$ACADVER
+  1
+AC1015
+  9
+$HANDSEED
+  5
+FFFF
+  9
+$INSBASE
+ 10
+0.0
+ 20
+0.0
+ 30
+0.0
+  9
+$MEASUREMENT
+ 70
+1
+  9
+$INSUNITS
+ 70
+4
+  0
+ENDSEC
+  0
+SECTION
+  2
+TABLES
+  0
+TABLE
+  2
+LTYPE
+  5
+5
+100
+AcDbSymbolTable
+ 70
+1
+  0
+LTYPE
+  5
+14
+100
+AcDbSymbolTableRecord
+100
+AcDbLinetypeTableRecord
+  2
+CONTINUOUS
+ 70
+0
+  3
+Solid line
+ 72
+65
+ 73
+0
+ 40
+0.0
+  0
+ENDTAB
+  0
+TABLE
+  2
+LAYER
+  5
+2
+100
+AcDbSymbolTable
+ 70
+3
+  0
+LAYER
+  5
+107
+100
+AcDbSymbolTableRecord
+100
+AcDbLayerTableRecord
+  2
+0
+ 70
+0
+ 62
+7
+  6
+CONTINUOUS
+370
+-3
+  0
+LAYER
+  5
+108
+100
+AcDbSymbolTableRecord
+100
+AcDbLayerTableRecord
+  2
+Cut
+ 70
+0
+ 62
+1
+  6
+CONTINUOUS
+370
+-3
+  0
+LAYER
+  5
+109
+100
+AcDbSymbolTableRecord
+100
+AcDbLayerTableRecord
+  2
+Engrave
+ 70
+0
+ 62
+5
+  6
+CONTINUOUS
+370
+-3
+  0
+ENDTAB
+  0
+ENDSEC
+  0
+SECTION
+  2
+BLOCKS
+  0
+BLOCK
+  5
+10A
+100
+AcDbEntity
+  8
+0
+100
+AcDbBlockBegin
+  2
+*Model_Space
+ 70
+0
+ 10
+0.0
+ 20
+0.0
+ 30
+0.0
+  3
+*Model_Space
+  1
+
+  0
+ENDBLK
+  5
+10B
+100
+AcDbEntity
+  8
+0
+100
+AcDbBlockEnd
+  0
+BLOCK
+  5
+10C
+100
+AcDbEntity
+  8
+0
+100
+AcDbBlockBegin
+  2
+*Paper_Space
+ 70
+0
+ 10
+0.0
+ 20
+0.0
+ 30
+0.0
+  3
+*Paper_Space
+  1
+
+  0
+ENDBLK
+  5
+10D
+100
+AcDbEntity
+  8
+0
+100
+AcDbBlockEnd
+  0
+ENDSEC
+  0
+SECTION
+  2
+ENTITIES
+  0
+LINE
+  5
+101
+330
+1F
+100
+AcDbEntity
+  8
+Cut
+100
+AcDbLine
+ 10
+10.000000
+ 20
+10.000000
+ 30
+0.0
+ 11
+90.000000
+ 21
+10.000000
+ 31
+0.0
+  0
+LINE
+  5
+102
+330
+1F
+100
+AcDbEntity
+  8
+Cut
+100
+AcDbLine
+ 10
+90.000000
+ 20
+10.000000
+ 30
+0.0
+ 11
+90.000000
+ 21
+40.000000
+ 31
+0.0
+  0
+LINE
+  5
+103
+330
+1F
+100
+AcDbEntity
+  8
+Cut
+100
+AcDbLine
+ 10
+90.000000
+ 20
+40.000000
+ 30
+0.0
+ 11
+10.000000
+ 21
+40.000000
+ 31
+0.0
+  0
+LINE
+  5
+104
+330
+1F
+100
+AcDbEntity
+  8
+Cut
+100
+AcDbLine
+ 10
+10.000000
+ 20
+40.000000
+ 30
+0.0
+ 11
+10.000000
+ 21
+10.000000
+ 31
+0.0
+  0
+CIRCLE
+  5
+105
+330
+1F
+100
+AcDbEntity
+  8
+Engrave
+100
+AcDbCircle
+ 10
+50.000000
+ 20
+25.000000
+ 30
+0.0
+ 40
+10.000000
+  0
+LWPOLYLINE
+  5
+106
+330
+1F
+100
+AcDbEntity
+  8
+Cut
+100
+AcDbPolyline
+ 90
+4
+ 70
+1
+ 43
+0.0
+ 10
+20.000000
+ 20
+22.500000
+ 10
+25.000000
+ 20
+22.500000
+ 42
+1.000000
+ 10
+25.000000
+ 20
+27.500000
+ 10
+20.000000
+ 20
+27.500000
+ 42
+1.000000
+  0
+ENDSEC
+  0
+EOF

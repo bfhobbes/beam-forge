@@ -1,0 +1,12 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "bundle": {
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDk2QTJDRjBDRUQ5RDY0NzkKUldSNVpKM3RETStpbHZYSnJWTHIvb0lQcnBVaUhmZXluWW8yZnFZME9Zck0rbHgyQ0hoZ1FEalQK",
+      "endpoints": ["https://raw.githubusercontent.com/bfhobbes/beam-forge/updates/latest.json"]
+    }
+  }
+}

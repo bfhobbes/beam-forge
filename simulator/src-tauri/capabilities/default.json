@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main",
+  "description": "Simulator window. The emulator and TCP link stay in Rust behind typed commands.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

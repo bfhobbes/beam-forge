@@ -1,0 +1,31 @@
+[package]
+name = "beam-forge"
+description = "Laser cutter editor and controller"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+default-run = "beam-forge"
+
+[lib]
+name = "beam_forge_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.7.4", features = [] }
+
+[dependencies]
+bf-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serialport = "4.10.1"
+ts-rs.workspace = true
+tauri = { version = "2.12.5", features = [] }
+tauri-plugin-updater = "2.14.1"
+tauri-plugin-process = "2.4.0"
+tauri-plugin-dialog = "2.8.4"
+
+[dev-dependencies]
+bf-sim.workspace = true
+tauri = { version = "2.12.5", features = ["test"] }

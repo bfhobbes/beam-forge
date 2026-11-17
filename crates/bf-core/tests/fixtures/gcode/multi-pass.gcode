@@ -1,0 +1,22 @@
+; Beam Forge job
+; Start from: absolute coordinates
+; Bounds: X5 Y5 to X25 Y15
+G21 G90
+; Layer Cut deep
+M8
+M4 S0
+G0 X5 Y5
+G1 X25 Y5 S1000 F300
+G1 X25 Y15
+G1 X5 Y15
+G1 X5 Y5
+G1 X25 Y5
+G1 X25 Y15
+G1 X5 Y15
+G1 X5 Y5
+G1 X25 Y5
+G1 X25 Y15
+G1 X5 Y15
+G1 X5 Y5
+M5
+M9

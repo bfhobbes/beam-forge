@@ -1,0 +1,37 @@
+; Sample GRBL job
+; GRBL device profile, absolute coords
+; Bounds: X10 Y10 to X40 Y30
+G00 G17 G40 G21 G54
+G90
+M4
+; Scan @ 3000 mm/min, 30% power
+M8
+G0X12Y10
+G91
+G1X26S300F3000
+G1X2S0
+G0Y0.1
+G1X-2S0
+G1X-26S300
+G1X-2S0
+G0Y0.1
+G1X2S0
+G1X26S300
+G1X2S0
+G90
+M9
+; Cut @ 600 mm/min, 80% power
+M8
+G0X10Y10
+G1Y30S800F600
+G1X40
+G2X40Y10I0J-10
+G1X10
+M9
+G1S0
+M5
+M9
+G90
+; return to user-defined finish pos
+G0 X0 Y0
+M2

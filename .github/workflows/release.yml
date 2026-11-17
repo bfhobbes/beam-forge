@@ -1,0 +1,141 @@
+name: Release
+on:
+  push:
+    tags: ["v*"]
+  # Anything else is a dry run: it builds and signs every platform and writes latest.json
+  # as a workflow artifact, without creating a release or touching the updates branch.
+  # PRs that change the release pipeline get one.
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - scripts/release-manifest.mjs
+      - scripts/stage-simulator.mjs
+      - scripts/check-linux-sidecar.sh
+      - src-tauri/tauri*.conf.json
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event_name == 'push' && 'publish' || github.ref }}
+  cancel-in-progress: false
+
+env:
+  DRY_RUN: ${{ github.event_name != 'push' }}
+
+jobs:
+  build:
+    name: build (${{ matrix.name }})
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            name: windows
+            packages: |
+              target/release/bundle/nsis/*-setup.exe
+              target/release/bundle/nsis/*-setup.exe.sig
+              target/release/bundle/msi/*.msi
+              target/release/bundle/msi/*.msi.sig
+          # The oldest supported Ubuntu, so the AppImage runs on older glibc too.
+          - os: ubuntu-22.04
+            name: linux
+            packages: |
+              target/release/bundle/appimage/*.AppImage
+              target/release/bundle/appimage/*.AppImage.sig
+              target/release/bundle/deb/*.deb
+              target/release/bundle/deb/*.deb.sig
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Tauri's Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev \
+            libxdo-dev libssl-dev libudev-dev build-essential file xdg-utils xvfb
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.15.0"
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: npm ci
+      - name: Check the tag matches the app version
+        if: env.DRY_RUN != 'true'
+        shell: bash
+        run: |
+          version=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME doesn't match the app version $version (run npm run release:version first)"
+            exit 1
+          fi
+      - name: Build signed packages
+        run: npm run release:build
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          BEAM_FORGE_UPDATE_TOKEN: ${{ secrets.BEAM_FORGE_UPDATE_TOKEN }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bundles-${{ matrix.name }}
+          path: ${{ matrix.packages }}
+          if-no-files-found: error
+      - name: The built-in simulator launches from the AppImage and .deb
+        if: runner.os == 'Linux'
+        run: dbus-run-session -- xvfb-run -a scripts/check-linux-sidecar.sh
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.15.0"
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: bundles-*
+          path: bundles
+      # Before publishing anything: every package is there and its signature verifies.
+      - name: Check the packages and signatures
+        run: |
+          version=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          node scripts/release-manifest.mjs "v$version" bundles "$RUNNER_TEMP/latest.json" --dry-run
+          cat "$RUNNER_TEMP/latest.json"
+      - uses: actions/upload-artifact@v4
+        if: env.DRY_RUN == 'true'
+        with:
+          name: latest-json-dry-run
+          path: ${{ runner.temp }}/latest.json
+      - name: Publish the GitHub release
+        if: env.DRY_RUN != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          shopt -s nullglob
+          assets=(bundles/*/nsis/*-setup.exe bundles/*/msi/*.msi bundles/*/appimage/*.AppImage bundles/*/deb/*.deb)
+          if [ ${#assets[@]} -ne 4 ]; then
+            echo "::error::Expected 4 packages, found ${#assets[@]}: ${assets[*]}"
+            exit 1
+          fi
+          gh release create "$GITHUB_REF_NAME" --title "Beam Forge ${GITHUB_REF_NAME#v}" --generate-notes "${assets[@]}"
+      - name: Point the updater at the release
+        if: env.DRY_RUN != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/release-manifest.mjs "$GITHUB_REF_NAME" bundles "$RUNNER_TEMP/latest.json"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git fetch origin updates; then
+            git worktree add "$RUNNER_TEMP/updates" -B updates origin/updates
+          else
+            git worktree add --detach "$RUNNER_TEMP/updates"
+            git -C "$RUNNER_TEMP/updates" checkout --orphan updates
+            git -C "$RUNNER_TEMP/updates" rm -rfq .
+          fi
+          cp "$RUNNER_TEMP/latest.json" "$RUNNER_TEMP/updates/latest.json"
+          git -C "$RUNNER_TEMP/updates" add latest.json
+          git -C "$RUNNER_TEMP/updates" commit -m "Update manifest for $GITHUB_REF_NAME"
+          git -C "$RUNNER_TEMP/updates" push origin updates

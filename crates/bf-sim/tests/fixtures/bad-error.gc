@@ -1,0 +1,8 @@
+; The first G1 has no feed rate: error:22.
+G21 G90
+M4 S500
+G1 X10 Y10
+G1 X20 Y10 F1000
+M5
+G0 X0 Y0
+M2

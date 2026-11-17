@@ -1,0 +1,28 @@
+[package]
+name = "bf-simulator"
+description = "Beam Forge Simulator: the bf-sim GRBL emulator behind a TCP fake USB link"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+default-run = "bf-simulator"
+
+[lib]
+name = "bf_simulator_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.7.4", features = [] }
+
+# The simulator hosts bf-sim only. It must not use bf-core, so the app and
+# the machine it talks to cannot share a bug.
+[dependencies]
+bf-sim.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+ts-rs.workspace = true
+tauri = { version = "2.12.5", features = [] }
+
+[dev-dependencies]
+tauri = { version = "2.12.5", features = ["test"] }

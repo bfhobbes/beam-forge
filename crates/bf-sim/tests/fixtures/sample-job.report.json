@@ -1,0 +1,27 @@
+{
+  "profile": "Diode laser (placeholder values)",
+  "lines": 37,
+  "total_time_s": 14.279,
+  "passes": [
+    {
+      "start_s": 0.001,
+      "time_s": 13.994
+    }
+  ],
+  "cut_distance_mm": 189.415,
+  "travel_distance_mm": 69.963,
+  "bounds": {
+    "min": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "max": [
+      50.0,
+      30.0,
+      0.0
+    ]
+  },
+  "max_power": 0.8,
+  "violations": []
+}

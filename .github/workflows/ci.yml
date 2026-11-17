@@ -1,0 +1,141 @@
+name: CI
+# Minutes: Windows runners bill at twice Linux's rate, so platform-independent
+# checks (web verify, simulator verify) run on Linux only. Installers, and the
+# checks that need them, are built on pushes to main, not on PRs; PRs that
+# change packaging get release.yml's dry run instead. Only main saves Rust
+# caches, so PR branches don't evict the cache every PR restores from.
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["**/*.md", "docs/**"]
+  pull_request:
+    paths-ignore: ["**/*.md", "docs/**"]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.15.0"
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - run: npm ci
+      - run: npm run test:rust
+      - name: Check generated bindings are committed
+        shell: bash
+        run: |
+          git diff --exit-code -- src/lib/bindings simulator/src/lib/bindings
+          test -z "$(git ls-files --others --exclude-standard -- src/lib/bindings simulator/src/lib/bindings)"
+      - run: npm run lint:rust
+      - name: Check simulator job fixtures
+        shell: bash
+        run: |
+          cargo build -q -p bf-sim
+          fixtures=crates/bf-sim/tests/fixtures
+          ./target/debug/bf-sim check "$fixtures/sample-job.gc"
+          for job in "$fixtures"/bad-*.gc; do
+            status=0
+            ./target/debug/bf-sim check "$job" > /dev/null || status=$?
+            if [ "$status" -ne 1 ]; then
+              echo "::error file=$job::expected bf-sim check to report violations (exit 1), got exit $status"
+              exit 1
+            fi
+          done
+      - run: npm run desktop:build
+        if: github.event_name != 'pull_request'
+      - name: Native window close regression
+        if: github.event_name != 'pull_request'
+        shell: pwsh
+        run: ./scripts/test-native-close.ps1
+      - name: Upload the close test's screenshot
+        if: failure() && github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: close-test-failure
+          path: target/close-test-failure.png
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        if: github.event_name != 'pull_request'
+        with:
+          name: beam-forge-windows
+          path: |
+            target/release/bundle/nsis/*.exe
+            target/release/bundle/msi/*.msi
+      - run: npm run sim:build
+        if: github.event_name != 'pull_request'
+      - uses: actions/upload-artifact@v4
+        if: github.event_name != 'pull_request'
+        with:
+          name: beam-forge-simulator-windows
+          path: |
+            target/release/bundle/nsis/Beam Forge Simulator_*.exe
+            target/release/bundle/msi/Beam Forge Simulator_*.msi
+
+  # The Rust checks again on Linux, on the release runner (see release.yml), plus the
+  # web and simulator checks, which don't depend on the OS. The native close test is a
+  # Windows-only PowerShell script; Linux checks the simulator sidecar instead.
+  linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Tauri's Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev \
+            libxdo-dev libssl-dev libudev-dev build-essential file xdg-utils xvfb
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.15.0"
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - run: npm ci
+      - run: npm run test:rust
+      - name: Check generated bindings are committed
+        run: |
+          git diff --exit-code -- src/lib/bindings simulator/src/lib/bindings
+          test -z "$(git ls-files --others --exclude-standard -- src/lib/bindings simulator/src/lib/bindings)"
+      - run: npm run lint:rust
+      - name: Check simulator job fixtures
+        run: |
+          cargo build -q -p bf-sim
+          fixtures=crates/bf-sim/tests/fixtures
+          ./target/debug/bf-sim check "$fixtures/sample-job.gc"
+          for job in "$fixtures"/bad-*.gc; do
+            status=0
+            ./target/debug/bf-sim check "$job" > /dev/null || status=$?
+            if [ "$status" -ne 1 ]; then
+              echo "::error file=$job::expected bf-sim check to report violations (exit 1), got exit $status"
+              exit 1
+            fi
+          done
+      - run: npm run verify
+      - run: npm run sim:verify
+      - run: npm run desktop:build
+        if: github.event_name != 'pull_request'
+      - uses: actions/upload-artifact@v4
+        if: github.event_name != 'pull_request'
+        with:
+          name: beam-forge-linux
+          path: |
+            target/release/bundle/appimage/*.AppImage
+            target/release/bundle/deb/*.deb
+      - name: The built-in simulator launches from the AppImage and .deb
+        if: github.event_name != 'pull_request'
+        run: dbus-run-session -- xvfb-run -a scripts/check-linux-sidecar.sh

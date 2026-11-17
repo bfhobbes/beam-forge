@@ -1,0 +1,28 @@
+; Beam Forge job
+; Start from: absolute coordinates
+; Bounds: X20 Y20 to X90 Y30
+G21 G90
+; Layer Score
+M4 S0
+G0 X20 Y20
+G1 X30 Y20 S200 F3000
+G1 X30 Y30
+G1 X20 Y30
+G1 X20 Y20
+; Layer Cut
+M8
+G0 X50 Y20 S0
+G1 X60 Y20 S800 F600
+G1 X60 Y30
+G1 X50 Y30
+G1 X50 Y20
+; Layer Mark
+M9
+M3 S0
+G0 X80 Y20
+G1 X90 Y20 S100 F1000
+G1 X90 Y30
+G1 X80 Y30
+G1 X80 Y20
+M5
+M9

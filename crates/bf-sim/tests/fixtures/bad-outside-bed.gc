@@ -1,0 +1,9 @@
+; The bed is 400 x 400 mm; this travels past its right edge.
+G21 G90
+G0 X10 Y10
+M4 S500
+G1 X20 Y10 F1000
+M5
+G0 X450 Y10
+G0 X0 Y0
+M2

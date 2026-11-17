@@ -1,0 +1,5 @@
+# Shared by bf-sim's tests/faults.rs and the simulator app's panel test, so
+# the same scenario is proven to run identically both ways.
+latency 10ms
+after 3: error 20   # line 4 is answered with error:20 instead of running
+after 4: alarm 1    # then a hard limit trips

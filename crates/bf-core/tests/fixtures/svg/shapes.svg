@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="200mm" height="100mm" viewBox="0 0 200 100">
+  <defs>
+    <style>.cut { fill: none; stroke: #00e000 }</style>
+    <rect id="tile" width="10" height="10" class="cut"/>
+  </defs>
+  <rect id="rounded" x="10" y="10" width="30" height="20" rx="5" stroke="#ff0000" fill="none"/>
+  <circle id="circle" cx="60" cy="20" r="10" stroke="#ff0000" fill="none"/>
+  <ellipse id="ellipse" cx="90" cy="20" rx="15" ry="5" stroke="#ff0000" fill="none"/>
+  <line id="line" x1="110" y1="10" x2="130" y2="30" stroke="#0000ff"/>
+  <polyline id="polyline" points="140,10 150,30 160,10" stroke="#0000ff" fill="none"/>
+  <polygon id="polygon" points="170,10 190,10 180,30" fill="#0000ff"/>
+  <path id="arc" d="M 10 60 a 10 10 0 0 1 20 0 q 5 10 10 0 c 5 -10 10 10 15 0 z" stroke="#000000" fill="none"/>
+  <g transform="translate(100 50) rotate(90)">
+    <rect id="rotated" width="20" height="10" stroke="#000000" fill="none"/>
+  </g>
+  <g transform="matrix(2 0 0 2 120 50)">
+    <use id="used" xlink:href="#tile"/>
+  </g>
+  <use href="#tile" x="160" y="60"/>
+</svg>
