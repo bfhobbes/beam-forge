@@ -156,7 +156,8 @@ pub fn profile_id(port: &PortInfo) -> String {
     id.trim_matches('-').to_string()
 }
 
-fn valid_id(id: &str) -> bool {
+/// Whether `id` can name a profile file: letters, digits and `-`, up to 64.
+pub(crate) fn valid_id(id: &str) -> bool {
     !id.is_empty() && id.len() <= 64 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
 }
 

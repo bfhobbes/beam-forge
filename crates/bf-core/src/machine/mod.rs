@@ -41,6 +41,7 @@ pub use preflight::{
     CheckLevel, Preflight, PreflightCheck, PreflightCheckId, check_bounds, check_homed,
     check_laser_mode, check_machine_ready, check_overrides, preflight,
 };
+pub(crate) use profile::valid_id;
 pub use profile::{
     AxisValues, BedSize, MachineProfile, OriginCorner, ProfileError, ProfileStore, profile_id,
 };

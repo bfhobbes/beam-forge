@@ -11,7 +11,7 @@ mod layer;
 mod store;
 
 pub use document::{DesignDocument, Point, SceneObject, Segment, Subpath, Transform};
-pub use layer::{CutLayer, LayerMode};
+pub use layer::{CutLayer, LayerMode, LayerPreset};
 pub use store::{RecentProject, RecentStore, Recovery, RecoveryStore, project_name};
 
 use serde::{Deserialize, Serialize};
@@ -411,6 +411,40 @@ mod tests {
         let reloaded = Project::from_value(value).unwrap();
         assert_eq!(reloaded.document.layers[0].fill_gap, 1.0);
         assert_eq!(reloaded, project);
+    }
+
+    #[test]
+    fn a_layers_preset_saves_and_reloads_and_older_layers_have_none() {
+        use crate::presets::PresetLibrary;
+
+        let mut project = Project::from_value(sample()).unwrap();
+        let plywood = PresetLibrary::starters().presets[0].clone();
+        project.document.layers[0].preset = Some(LayerPreset {
+            id: plywood.id.clone(),
+            name: "3 mm Plywood · Cut".into(),
+            settings: plywood.settings,
+        });
+        let json = project.to_json().unwrap();
+        assert!(json.contains("\"preset\": {"), "{json}");
+        let reloaded = Project::from_json(&json).unwrap();
+        assert_eq!(reloaded, project);
+        assert_eq!(reloaded.document.layers[1].preset, None);
+
+        // A layer without a preset writes no field, as files did before presets.
+        let value: Value = serde_json::from_str(&json).unwrap();
+        assert!(value["document"]["layers"][1].get("preset").is_none());
+
+        project.document.layers[0]
+            .preset
+            .as_mut()
+            .unwrap()
+            .settings
+            .passes = 0;
+        let error = project.to_json().unwrap_err();
+        assert!(
+            error.to_string().contains("a preset with no passes"),
+            "{error}"
+        );
     }
 
     #[test]

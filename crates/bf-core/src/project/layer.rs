@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use super::ProjectError;
+use crate::presets::PresetSettings;
 
 /// How a layer's shapes are lasered.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -58,6 +59,26 @@ pub struct CutLayer {
     /// with the laser off at cutting speed rather than stopping for a rapid.
     #[serde(default = "default_fill_gap")]
     pub fill_gap: f64,
+    /// The material preset last applied to (or saved from) this layer.
+    /// Absent in files saved before presets, and on layers never given one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub preset: Option<LayerPreset>,
+}
+
+/// Which preset a layer's settings came from. It keeps the preset's name and
+/// settings as applied, so the layer can say it has been changed since even
+/// on a machine whose library doesn't have that preset.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "project/")]
+pub struct LayerPreset {
+    /// The preset's id in the library it came from.
+    pub id: String,
+    /// The preset's name when it was applied, e.g. "3 mm Plywood · Cut".
+    pub name: String,
+    /// The settings as applied.
+    pub settings: PresetSettings,
 }
 
 /// The fill gap a layer saved before it existed gets.
@@ -88,6 +109,7 @@ impl CutLayer {
             bidirectional: true,
             overscan: 2.5,
             fill_gap: DEFAULT_FILL_GAP,
+            preset: None,
         }
     }
 
@@ -130,6 +152,11 @@ impl CutLayer {
         }
         if !(self.fill_gap.is_finite() && self.fill_gap >= 0.0) {
             return fail("a negative fill gap");
+        }
+        if let Some(preset) = &self.preset
+            && let Some(problem) = preset.settings.problem()
+        {
+            return fail(&format!("a preset with {problem}"));
         }
         Ok(())
     }
