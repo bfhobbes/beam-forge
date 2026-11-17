@@ -20,6 +20,7 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use crate::estimate::{JobEstimate, MotionLimits, move_times};
 use crate::machine::{Dialect, MachineProfile, OriginCorner, dialect};
 use crate::plan::{LayerPlan, Move, Plan, PlanOptions, plan};
 use crate::project::{CutLayer, DesignDocument, Point};
@@ -29,7 +30,7 @@ pub use frame::{
 };
 pub(crate) use grbl::{number, write as write_grbl, write_frame as write_grbl_frame};
 pub use run::{DesignRun, RunPlan, WorkPlacement, run};
-pub use toolpath::{Toolpath, toolpath};
+pub use toolpath::{Toolpath, estimate, toolpath};
 
 /// Positions closer to the bed edge than this still count as on the bed.
 const BED_TOLERANCE: f64 = 1e-6;
@@ -199,6 +200,9 @@ pub struct WrittenJob {
     /// For each move in plan order, the 1-based command line that makes it,
     /// counted as a job's progress counts acknowledged lines.
     pub move_lines: Vec<u32>,
+    /// Moves, by index in plan order, that start from rest because the
+    /// firmware waits for motion to finish before the commands ahead of them.
+    pub stops: Vec<usize>,
 }
 
 /// Why a job couldn't be generated, worded for the user.
@@ -363,12 +367,12 @@ impl PlacedJob {
     }
 
     /// Writes the job in its dialect. Also says which command line makes
-    /// each move.
+    /// each move, and which moves start from rest ([`WrittenJob::stops`]).
     fn write(
         &self,
         document: &DesignDocument,
         profile: &MachineProfile,
-    ) -> (GeneratedJob, Vec<u32>) {
+    ) -> (GeneratedJob, Vec<u32>, Vec<usize>) {
         let mut header = vec!["Beam Forge job".to_string()];
         header.extend(self.header());
         let written = self.dialect.write_job(&JobProgram {
@@ -388,7 +392,18 @@ impl PlacedJob {
             },
             gcode: written.gcode,
         };
-        (job, written.move_lines)
+        (job, written.move_lines, written.stops)
+    }
+
+    /// The toolpath preview of the job, timed on `profile`'s machine.
+    /// `stops` are the written job's [`WrittenJob::stops`].
+    fn toolpath(&self, stops: &[usize], profile: &MachineProfile) -> Toolpath {
+        let move_seconds = move_times(&self.plan, &MotionLimits::of(profile), stops);
+        Toolpath {
+            estimate: JobEstimate::new(&self.plan, &move_seconds),
+            plan: self.design.clone(),
+            move_seconds,
+        }
     }
 
     /// Comment lines saying where the job goes, and any bed warning.

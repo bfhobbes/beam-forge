@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use bf_sim::{Profile, Violation};
 
 use super::*;
-use crate::machine::BedSize;
+use crate::machine::{BedSize, Settings};
 use crate::project::{SceneObject, Segment, Subpath, Transform};
 
 fn translate(x: f64, y: f64) -> Transform {
@@ -80,6 +80,41 @@ fn absolute() -> JobPlacement {
     JobPlacement::default()
 }
 
+/// [`profile`] with the simulated diode laser's `$$` settings, as
+/// connecting to it would leave the profile.
+fn simulated_profile() -> MachineProfile {
+    let lines = Profile::diode_laser().settings.report_lines();
+    let mut machine = profile();
+    machine.apply_settings(&Settings::parse(lines.iter().map(String::as_str)));
+    machine
+}
+
+/// The job's estimated time is within 5% of the time it takes on the
+/// simulated diode laser.
+fn estimate_matches_the_simulator(name: &str, doc: &DesignDocument) {
+    let machine = simulated_profile();
+    let run = run(doc, &machine, absolute(), None, name).unwrap();
+    let report = bf_sim::check(&run.job.gcode, Profile::diode_laser());
+    assert!(report.passed(), "{name}: {report}");
+    let estimate = &run.plan.toolpath.estimate;
+    let error = estimate.seconds / report.total_time_s - 1.0;
+    println!(
+        "{name}: estimated {:.3} s, simulated {:.3} s ({:+.2}%)",
+        estimate.seconds,
+        report.total_time_s,
+        error * 100.0
+    );
+    assert!(
+        error.abs() < 0.05,
+        "{name}: estimated {} s, simulated {} s",
+        estimate.seconds,
+        report.total_time_s
+    );
+    assert_eq!(estimate.layers.len(), run.plan.toolpath.plan.layers.len());
+    let total: f64 = run.plan.toolpath.move_seconds.iter().sum();
+    assert!((total - estimate.seconds).abs() < 1e-9);
+}
+
 /// Compares `gcode` with `tests/fixtures/gcode/<name>.gcode`, and checks
 /// it on the simulated diode laser.
 fn snapshot(name: &str, gcode: &str) {
@@ -112,6 +147,7 @@ fn line_layer_snapshot() {
     );
     let job = generate(&doc, &profile(), absolute(), None).unwrap();
     snapshot("line", &job.gcode);
+    estimate_matches_the_simulator("line", &doc);
     assert!(job.summary.inside_bed);
     assert_eq!(
         job.summary.bounds,
@@ -134,6 +170,7 @@ fn multi_pass_snapshot() {
     let doc = document(vec![cut], vec![rect("r", "cut", 5.0, 5.0, 20.0, 10.0)]);
     let job = generate(&doc, &profile(), absolute(), None).unwrap();
     snapshot("multi-pass", &job.gcode);
+    estimate_matches_the_simulator("multi-pass", &doc);
     let cuts = job.lines().filter(|l| l.starts_with("G1")).count();
     assert_eq!(cuts, 12, "4 edges, 3 times");
     assert!((job.summary.cut_length - 180.0).abs() < 1e-9);
@@ -165,12 +202,19 @@ fn air_assist_and_constant_power_snapshot() {
     );
     let job = generate(&doc, &profile(), absolute(), None).unwrap();
     snapshot("air-assist", &job.gcode);
+    estimate_matches_the_simulator("air-assist", &doc);
     let commands: Vec<_> = job
         .lines()
         .filter(|l| l.starts_with('M'))
         .map(String::from)
         .collect();
     assert_eq!(commands, ["M4 S0", "M8", "M9", "M3 S0", "M5", "M9"]);
+    // GRBL waits for motion to finish before each change, so the head is
+    // at rest before the first move (M4), the second layer (M8) and the
+    // third (M9, M3), each a rapid and four cuts in.
+    let placed = PlacedJob::new(&doc, &profile(), absolute(), None).unwrap();
+    let (_, _, stops) = placed.write(&doc, &profile());
+    assert_eq!(stops, [0, 5, 10]);
 }
 
 #[test]
@@ -192,6 +236,7 @@ fn fill_layer_snapshot() {
     );
     let job = generate(&doc, &profile(), absolute(), None).unwrap();
     snapshot("fill", &job.gcode);
+    estimate_matches_the_simulator("fill", &doc);
     // Five rows, each burning both blocks.
     assert!((job.summary.cut_length - 100.0).abs() < 1e-9);
     // Per row: 1 mm overscan in, the 1.5 mm gap and 1 mm out, laser off.
@@ -790,9 +835,12 @@ fn the_toolpath_is_in_document_coordinates() {
     );
     // Planned from the job origin, as the GCode is.
     assert_eq!(preview.plan.start, Point { x: 25.0, y: 40.0 });
-    assert_eq!(preview.rapid_rate, 5000.0);
+    // Timed with the profile's rates: a 6000 vs 5000 mm/min, 10 mm/s² machine.
+    assert_eq!(preview.move_seconds.len(), 5);
+    assert!(preview.estimate.seconds > 0.0);
     let json = serde_json::to_value(&preview).unwrap();
-    assert_eq!(json["rapidRate"], 5000.0);
+    assert_eq!(json["estimate"]["layers"][0]["layerId"], "cut");
+    assert_eq!(json["moveSeconds"].as_array().unwrap().len(), 5);
     assert_eq!(json["plan"]["layers"][0]["layerId"], "cut");
 
     // The head's position only moves the job on the bed, so the preview

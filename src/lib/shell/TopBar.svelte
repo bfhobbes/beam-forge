@@ -9,6 +9,7 @@
   import { lifecycle } from "#lib/desktop/lifecycle.svelte.js";
   import { desktop } from "#lib/desktop/platform.js";
   import favicon from "#lib/assets/favicon.svg";
+  import JobTimeEstimate from "#lib/toolpath/JobTimeEstimate.svelte";
   import AboutPopover from "./AboutPopover.svelte";
 
   let { project = "Untitled" }: { project?: string } = $props();
@@ -36,6 +37,7 @@
 
   <div class="ml-auto flex items-center gap-1">
     <UpdateManager />
+    <JobTimeEstimate />
     {#each buttons as button (button.id)}
       {@const action = registry.get(button.id)}
       {@const enabled = action ? registry.enabled(action) : false}

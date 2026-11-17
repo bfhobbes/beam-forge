@@ -79,13 +79,10 @@ pub fn run(
     name: impl Into<String>,
 ) -> Result<DesignRun, GcodeError> {
     let placed = PlacedJob::new(document, profile, placement, current)?;
-    let (job, move_lines) = placed.write(document, profile);
+    let (job, move_lines, stops) = placed.write(document, profile);
     let plan = RunPlan {
         name: name.into(),
-        toolpath: Toolpath {
-            rapid_rate: profile.max_rate.x.min(profile.max_rate.y),
-            plan: placed.design.clone(),
-        },
+        toolpath: placed.toolpath(&stops, profile),
         move_lines,
         placement: WorkPlacement {
             mirror_width: placed.corner.width,

@@ -36,6 +36,7 @@ function profile(changes: Partial<MachineProfile> = {}): MachineProfile {
     laserMode: false,
     maxRate: { x: 6000, y: 6000, z: 500 },
     acceleration: { x: 500, y: 500, z: 10 },
+    junctionDeviation: 0.01,
     homing: false,
     airAssist: "M8",
     userOrigin: null,

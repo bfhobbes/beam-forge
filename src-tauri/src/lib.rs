@@ -77,6 +77,7 @@ fn commands<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> 
             machine::job::machine_override,
             gcode::gcode_summary,
             gcode::gcode_toolpath,
+            gcode::gcode_estimate,
             gcode::gcode_export,
             project::project_open,
             project::project_open_dialog,
@@ -972,6 +973,11 @@ EOF
             json!({ "kind": "rapid", "to": { "x": 10.0, "y": 20.0 } })
         );
         assert_eq!(moves.as_array().unwrap().len(), 5);
+        assert_eq!(toolpath["moveSeconds"].as_array().unwrap().len(), 5);
+        let estimate = call(&window, "gcode_estimate", body(&absolute)).unwrap();
+        assert_eq!(estimate, toolpath["estimate"]);
+        assert_eq!(estimate["layers"][0]["layerId"], "C00");
+        assert!(estimate["seconds"].as_f64().unwrap() > 0.0, "{estimate}");
 
         let dir = std::env::temp_dir().join(format!("bf-ipc-gcode-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();

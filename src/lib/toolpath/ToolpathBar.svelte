@@ -7,7 +7,7 @@
   import { jobSetup } from "#lib/gcode/job-setup.svelte.js";
   import { machineSettings } from "#lib/machine/settings.svelte.js";
   import { SPEEDS, toolpathPreview as preview } from "./preview.svelte.js";
-  import { clock } from "./timeline.js";
+  import { clock, layerDuration } from "./timeline.js";
 
   /**
    * The toolpath view's docked playback bar: play/pause, the scrubber over
@@ -64,11 +64,16 @@
 
   const timeline = $derived(preview.timeline);
   const progress = $derived(preview.progress);
+  const layerNameOf = (layerId: string) =>
+    editor.doc.layers.find((layer) => layer.id === layerId)?.name ?? layerId;
   const layerName = $derived.by(() => {
     if (!timeline || !progress || progress.layer < 0) return null;
-    const id = timeline.layers[progress.layer]!.layerId;
-    return editor.doc.layers.find((layer) => layer.id === id)?.name ?? id;
+    return layerNameOf(timeline.layers[progress.layer]!.layerId);
   });
+  /** The current layer's estimated time, every pass included. */
+  const layerTime = $derived(
+    timeline && progress && progress.layer >= 0 ? layerDuration(timeline, progress.layer) : null,
+  );
   const colorOf = (layerId: string) =>
     editor.doc.layers.find((layer) => layer.id === layerId)?.color ?? "currentColor";
   const following = $derived(preview.external !== null);
@@ -113,16 +118,17 @@
         <!-- Each layer's share of the job, in its colour. -->
         <div class="flex h-1 overflow-hidden rounded-full bg-muted" aria-hidden="true">
           {#each timeline.layers as layer, index (index)}
-            {@const end = timeline.layers[index + 1]?.start ?? timeline.duration}
+            {@const seconds = layerDuration(timeline, index)}
             <div
               class="h-full"
+              title={`${layerNameOf(layer.layerId)}: ${clock(seconds)}`}
               style:background-color={colorOf(layer.layerId)}
-              style:flex-grow={Math.max(0, end - layer.start)}
+              style:flex-grow={Math.max(0, seconds)}
             ></div>
           {/each}
         </div>
       </div>
-      <span class="font-mono tabular-nums" title="Elapsed / total, at feed rate">
+      <span class="font-mono tabular-nums" title="Elapsed / estimated total">
         {clock(progress?.time ?? 0)} / {clock(timeline.duration)}
       </span>
       <div class="flex gap-1" role="group" aria-label="Playback speed">
@@ -143,11 +149,12 @@
         Layer
         <span class="text-foreground">{layerName ?? "–"}</span>
         {#if progress && progress.layer >= 0}({progress.layer + 1} of {timeline.layers.length}){/if}
+        {#if layerTime !== null}<span class="tabular-nums">· {clock(layerTime)}</span>{/if}
       </span>
       <span class="tabular-nums">
         Move {Math.min(progress?.completed ?? 0, timeline.count)} of {timeline.count}
       </span>
-      <span class="ml-auto">Times at feed rate, without acceleration</span>
+      <span class="ml-auto">Times estimated from the machine's rates and acceleration</span>
     </p>
   {/if}
 </div>

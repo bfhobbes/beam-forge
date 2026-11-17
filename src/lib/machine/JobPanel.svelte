@@ -7,6 +7,7 @@
   import { machineSettings } from "./settings.svelte.js";
   import { formatElapsed, jobStateLabel, machineJob as job } from "./job.svelte.js";
   import OverrideSliders from "./OverrideSliders.svelte";
+  import { estimateError, formatError } from "./run.svelte.js";
 
   const progress = $derived(job.progress);
   const jobState = $derived(progress?.state);
@@ -18,7 +19,8 @@
     const id = run.timeline.layers[run.layer]!.layerId;
     return editor.doc.layers.find((layer) => layer.id === id)?.name ?? id;
   });
-  const ESTIMATE_HINT = "Estimated at each layer's feed rate, without acceleration";
+  const outcomeError = $derived(run?.outcome ? estimateError(run.outcome) : null);
+  const ESTIMATE_HINT = "Estimated from the machine profile's rates and accelerations";
 </script>
 
 <section aria-label="Job" class="space-y-2">
@@ -110,7 +112,8 @@
       <p role="status" class="text-xs text-muted-foreground tabular-nums" title={ESTIMATE_HINT}>
         {run.outcome.state.state === "finished" ? "Finished in" : "Ran for"}
         <span class="text-foreground">{formatElapsed(run.outcome.actualMs)}</span>
-        · estimated {formatElapsed(run.outcome.estimateMs)} at feed rate
+        · estimated {formatElapsed(run.outcome.estimateMs)}
+        {#if outcomeError !== null}({formatError(outcomeError)}){/if}
       </p>
     {/if}
 

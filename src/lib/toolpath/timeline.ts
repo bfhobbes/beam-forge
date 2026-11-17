@@ -3,8 +3,9 @@
  * arrays, so finding where the head is at any moment is a binary search.
  * Scrubbing a 10k-move job is then a ~14-step lookup per frame.
  *
- * Times are at the programmed feed (cuts) and the rapid rate (rapids), with
- * no acceleration: a playback clock, not a job time estimate.
+ * Times are the desktop app's estimate (`Toolpath.moveSeconds`), from the
+ * machine profile's rates and accelerations, so the playback clock runs at
+ * the machine's pace.
  */
 import type { Toolpath } from "#lib/bindings/gcode/Toolpath.js";
 import type { Point } from "#lib/bindings/project/Point.js";
@@ -51,9 +52,6 @@ export interface PlaybackPoint {
   layer: number;
 }
 
-/** A floor so a zero feed can't stall the timeline. mm/min. */
-const MIN_RATE = 1;
-
 export function buildTimeline(toolpath: Toolpath): Timeline {
   const { plan } = toolpath;
   const count = plan.layers.reduce((sum, layer) => sum + layer.moves.length, 0);
@@ -63,28 +61,29 @@ export function buildTimeline(toolpath: Toolpath): Timeline {
   const power = new Float64Array(count);
   const layer = new Uint32Array(count);
   const layers: TimelineLayer[] = [];
-  const rapid = Math.max(MIN_RATE, toolpath.rapidRate);
-
-  let at = plan.start;
   let time = 0;
   let index = 0;
   for (const [layerIndex, planned] of plan.layers.entries()) {
     layers.push({ layerId: planned.layerId, first: index, end: index, start: time });
     for (const step of planned.moves) {
-      const length = Math.hypot(step.to.x - at.x, step.to.y - at.y);
-      const rate = step.kind === "cut" ? Math.max(MIN_RATE, step.speed) : rapid;
-      time += (length / rate) * 60;
+      time += Math.max(0, toolpath.moveSeconds[index] ?? 0);
       x[index] = step.to.x;
       y[index] = step.to.y;
       ends[index] = time;
       power[index] = step.kind === "cut" ? step.power : -1;
       layer[index] = layerIndex;
-      at = step.to;
       index++;
     }
     layers[layerIndex]!.end = index;
   }
   return { start: plan.start, count, x, y, ends, power, layer, layers, duration: time };
+}
+
+/** Seconds layer `index` takes, every pass included. */
+export function layerDuration(timeline: Timeline, index: number): number {
+  const layer = timeline.layers[index];
+  if (!layer) return 0;
+  return (timeline.layers[index + 1]?.start ?? timeline.duration) - layer.start;
 }
 
 /** The first move still in progress at `time`: the first that ends after it. `count` once all are done. */

@@ -4,6 +4,7 @@ import type { Point } from "#lib/bindings/project/Point.js";
 import { buildTimeline } from "#lib/toolpath/timeline.js";
 import { followHead, takenMoves, timeAtHead, toDocument } from "./follow.js";
 import { clampOverride, reportedOverride, sliderValue } from "./overrides.js";
+import { atFeedRate } from "#lib/toolpath/fixtures.js";
 
 const cut = (x: number, y: number) => ({
   kind: "cut" as const,
@@ -13,9 +14,8 @@ const cut = (x: number, y: number) => ({
 });
 
 /** A 10 mm square from (10, 10), cut twice over: moves 1-4 and 5-8 trace the same edges. */
-const twoPasses: Toolpath = {
-  rapidRate: 6000,
-  plan: {
+const twoPasses: Toolpath = atFeedRate(
+  {
     start: { x: 0, y: 0 },
     layers: [
       {
@@ -28,16 +28,25 @@ const twoPasses: Toolpath = {
       },
     ],
   },
-};
+  6000,
+);
 const timeline = buildTimeline(twoPasses);
 const at = (x: number, y: number): Point => ({ x, y });
 
 describe("following a running design", () => {
   it("maps the reported work position back onto the design", () => {
-    const placed = { mirrorWidth: null, mirrorHeight: null, offset: { x: -5, y: 3 } };
+    const placed = {
+      mirrorWidth: null,
+      mirrorHeight: null,
+      offset: { x: -5, y: 3 },
+    };
     expect(toDocument(placed, { x: 5, y: 13 })).toEqual({ x: 10, y: 10 });
     // Origin rear right on a 400 × 300 bed.
-    const mirrored = { mirrorWidth: 400, mirrorHeight: 300, offset: { x: 0, y: 0 } };
+    const mirrored = {
+      mirrorWidth: 400,
+      mirrorHeight: 300,
+      offset: { x: 0, y: 0 },
+    };
     expect(toDocument(mirrored, { x: 390, y: 280 })).toEqual({ x: 10, y: 20 });
   });
 

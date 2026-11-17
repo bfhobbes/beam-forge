@@ -25,11 +25,17 @@ pub(crate) fn write(job: &JobProgram) -> WrittenJob {
     let mut feed: Option<String> = None;
     let mut air = false;
     let mut move_lines = Vec::with_capacity(job.plan.moves().count());
+    // GRBL waits for motion to finish before it changes the laser or air
+    // assist (`spindle_sync`, `coolant_sync`).
+    let mut stops = Vec::new();
     for plan in &job.plan.layers {
         let layer = job.layer(plan);
         let name = layer.map_or(plan.layer_id.as_str(), |layer| layer.name.as_str());
         out.line(format!("; Layer {}", one_line(name)));
         if plan.air_assist != air {
+            if stops.last() != Some(&move_lines.len()) {
+                stops.push(move_lines.len());
+            }
             air = plan.air_assist;
             out.line(if air {
                 job.profile.air_assist.trim().to_string()
@@ -44,6 +50,9 @@ pub(crate) fn write(job: &JobProgram) -> WrittenJob {
         };
         if laser != Some(mode) {
             // S0 first, so switching to M3 can't fire at the last power.
+            if stops.last() != Some(&move_lines.len()) {
+                stops.push(move_lines.len());
+            }
             laser = Some(mode);
             power = number(0.0);
             out.line(format!("{mode} S0"));
@@ -86,6 +95,7 @@ pub(crate) fn write(job: &JobProgram) -> WrittenJob {
     WrittenJob {
         gcode: out.text,
         move_lines,
+        stops,
     }
 }
 
