@@ -40,23 +40,23 @@ The service binds `127.0.0.1:17845`. `GET /updates/:target/:arch/:current_versio
 
 ## Releases
 
-Releases are published from the private `bfhobbes/beam-forge` repository:
+Releases are published from the public `bfhobbes/beam-forge` repository:
 
 1. Run `npm run release:version -- 0.1.1`. It sets the app and simulator version in `package.json`, `tauri.conf.json` and `Cargo.toml`. Commit the change through a PR and merge it.
 2. Tag the merge on `main` and push the tag: `git tag v0.1.1 && git push origin v0.1.1`.
 3. `.github/workflows/release.yml` checks the tag matches the version, then runs `npm run release:build` on Windows (`windows-latest`) and Linux (`ubuntu-22.04`, so the AppImage also runs on older glibc). That build bundles the simulator and adds `src-tauri/tauri.release.conf.json`, which turns on signed updater artifacts and sets the public key and endpoint. The Linux build also checks the simulator sidecar launches from the AppImage and the `.deb` (`scripts/check-linux-sidecar.sh`). A publish job then verifies every package's signature against the public key, publishes the NSIS and MSI installers, the AppImage and the `.deb` as one GitHub release with generated notes, and `scripts/release-manifest.mjs` writes `latest.json` to the `updates` branch.
 
-The endpoint is `https://raw.githubusercontent.com/bfhobbes/beam-forge/updates/latest.json`. The manifest links each package by its GitHub API asset URL. Each install updates through its own package type: `windows-x86_64-nsis`, `windows-x86_64-msi`, `linux-x86_64-appimage` and `linux-x86_64-deb`, with `windows-x86_64` (NSIS) and `linux-x86_64` (AppImage) as fallbacks. Raw files can be cached for about five minutes, so a new release may take that long to appear.
+The endpoint is `https://raw.githubusercontent.com/bfhobbes/beam-forge/updates/latest.json`. The manifest links each package by its public download URL (`browser_download_url`), so the updater needs no credentials and no GitHub API rate limit applies. Each install updates through its own package type: `windows-x86_64-nsis`, `windows-x86_64-msi`, `linux-x86_64-appimage` and `linux-x86_64-deb`, with `windows-x86_64` (NSIS) and `linux-x86_64` (AppImage) as fallbacks. Raw files can be cached for about five minutes, so a new release may take that long to appear.
 
 Any other run of the release workflow is a dry run: a PR that changes the release pipeline (the workflow, `release-manifest.mjs`, `stage-simulator.mjs`, `check-linux-sidecar.sh` or the Tauri configs), or **Run workflow** on the Actions tab. It builds and signs both platforms and uploads the `latest.json` it would publish (with placeholder URLs) as the `latest-json-dry-run` artifact, but creates no release and leaves the `updates` branch alone.
 
-Because the repository is private, release builds embed a read-only token. `BEAM_FORGE_UPDATE_TOKEN` is read at compile time, and the updater sends it as `Authorization` on the check and the download. It is a fine-grained token limited to read-only Contents on this repository. Anyone holding an installer can extract it and read the repository, so never widen its permissions. If it expires or is revoked, installed copies can no longer find updates. Replace it in the repository secrets, publish a release, and install that release by hand.
+The updater sends no credentials: the manifest and packages are public, and packages are trusted by their updater signatures alone.
 
-The repository secrets are `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` and `BEAM_FORGE_UPDATE_TOKEN`. The signing key and its password are kept in the ignored `.local/release/`; back them up outside this machine. Losing the key means installed copies can't verify any later update. Changing the public key needs a planned rotation through an already-trusted release. Keep the identifier `dev.bfhobbes.beamforge` stable, and never use `dangerousInsecureTransportProtocol` in the release config.
+The repository secrets are `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. The signing key and its password are kept in the ignored `.local/release/`; back them up outside this machine. Losing the key means installed copies can't verify any later update. Changing the public key needs a planned rotation through an already-trusted release. Keep the identifier `dev.bfhobbes.beamforge` stable, and never use `dangerousInsecureTransportProtocol` in the release config.
 
 ## Linux
 
-Each release ships `Beam.Forge_<version>_amd64.AppImage` and `Beam.Forge_<version>_amd64.deb` (x86_64). Both update in place through the same private-repository flow as Windows (the embedded token on the check and download, GitHub API asset URLs):
+Each release ships `Beam.Forge_<version>_amd64.AppImage` and `Beam.Forge_<version>_amd64.deb` (x86_64). Both update in place through the same flow as Windows (the public manifest and download URLs):
 
 - **AppImage** (recommended): `chmod +x` it and run it from a folder you own, such as `~/Applications`. An update rewrites the AppImage file itself, so it needs no password. Older distributions may need `libfuse2` to mount AppImages.
 - **`.deb`** (Debian, Ubuntu, Mint): `sudo apt install ./Beam.Forge_<version>_amd64.deb` pulls in WebKitGTK and the other dependencies. An update installs the newer `.deb` with `dpkg -i`, so it asks for an administrator password (through `pkexec`).

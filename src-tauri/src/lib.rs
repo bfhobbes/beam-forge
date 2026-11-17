@@ -39,6 +39,7 @@ fn commands<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> 
     builder
         .manage(machine::Machine::default())
         .manage(machine::settings::Profiles::default())
+        .manage(machine::safety::RealHardwareGate::default())
         .manage(machine::job::JobPicker::default())
         .manage(gcode::ExportPicker::default())
         .manage(project::ProjectFiles::default())
@@ -51,6 +52,8 @@ fn commands<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> 
             machine::machine_state,
             machine::machine_connect,
             machine::machine_disconnect,
+            machine::safety::machine_real_hardware,
+            machine::safety::machine_set_real_hardware,
             machine::settings::machine_settings,
             machine::settings::machine_write_setting,
             machine::settings::machine_profiles,
@@ -89,19 +92,11 @@ fn commands<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> 
         ])
 }
 
-/// Releases live in the private GitHub repository, so release builds embed a
-/// read-only token (`BEAM_FORGE_UPDATE_TOKEN` at compile time) for the
-/// update manifest and packages. Other builds send no credentials.
+/// The updater. Releases are public GitHub releases, so it sends no
+/// credentials; packages are trusted by their signatures alone.
 fn updater_plugin<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R, tauri_plugin_updater::Config>
 {
-    let builder = tauri_plugin_updater::Builder::new();
-    match option_env!("BEAM_FORGE_UPDATE_TOKEN") {
-        Some(token) if !token.is_empty() => builder
-            .header("Authorization", format!("Bearer {token}"))
-            .expect("The update token must be a valid header value"),
-        _ => builder,
-    }
-    .build()
+    tauri_plugin_updater::Builder::new().build()
 }
 
 pub fn run() {
@@ -436,35 +431,6 @@ EOF
     }
 
     #[test]
-    fn missing_serial_port_fails_with_a_clear_error() {
-        let (_app, window) = main_window();
-        let port = json!({
-            "key": "serial:NO-SUCH-PORT",
-            "address": { "kind": "serial", "path": "NO-SUCH-PORT" },
-            "label": "NO-SUCH-PORT",
-            "description": null,
-            "vid": null,
-            "pid": null,
-        });
-        let error = call(
-            &window,
-            "machine_connect",
-            json!({ "port": port, "baud": 115200 }),
-        )
-        .unwrap_err();
-        assert!(
-            error
-                .as_str()
-                .unwrap()
-                .starts_with("Couldn't open NO-SUCH-PORT"),
-            "{error}"
-        );
-        let state = call(&window, "machine_state", json!({})).unwrap();
-        assert_eq!(state["status"], "disconnected");
-        assert_eq!(state["reason"], error);
-    }
-
-    #[test]
     fn unreachable_tcp_port_fails_with_a_clear_error() {
         let (_app, window) = main_window();
         let _ports = PORTS.lock().unwrap_or_else(|e| e.into_inner());
@@ -709,6 +675,84 @@ EOF
         call(&window, "machine_soft_reset", json!({})).unwrap();
         wait_for(&|l| l["line"].as_str().unwrap().starts_with("Grbl 1.1h"));
         call(&window, "machine_disconnect", json!({})).unwrap();
+    }
+
+    #[test]
+    fn real_hardware_needs_the_switch_and_the_current_safety_notice() {
+        use tauri::Manager;
+
+        let (app, window) = main_window();
+        let dir = std::env::temp_dir().join(format!("bf-ipc-safety-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        app.state::<machine::safety::RealHardwareGate>()
+            .use_dir(dir.clone());
+        let serial = json!({
+            "key": "serial:BF-NO-SUCH-PORT",
+            "address": { "kind": "serial", "path": "BF-NO-SUCH-PORT" },
+            "label": "BF-NO-SUCH-PORT",
+            "description": null,
+            "vid": null,
+            "pid": null,
+        });
+        let version = machine::safety::NOTICE_VERSION;
+
+        let state = call(&window, "machine_real_hardware", json!({})).unwrap();
+        assert_eq!(state, json!({ "enabled": false, "noticeVersion": version }));
+        let refused = call(&window, "machine_connect", json!({ "port": serial })).unwrap_err();
+        assert!(
+            refused
+                .as_str()
+                .unwrap()
+                .starts_with("Real laser control is off"),
+            "{refused}"
+        );
+        let state = call(&window, "machine_state", json!({})).unwrap();
+        assert_eq!(state, json!({ "status": "disconnected", "reason": null }));
+
+        // An older (or missing) notice version doesn't switch it on.
+        for accepted in [json!(null), json!(version - 1)] {
+            let stale = call(
+                &window,
+                "machine_set_real_hardware",
+                json!({ "enabled": true, "acceptedNotice": accepted }),
+            );
+            assert!(stale.is_err(), "{stale:?}");
+        }
+        let on = call(
+            &window,
+            "machine_set_real_hardware",
+            json!({ "enabled": true, "acceptedNotice": version }),
+        )
+        .unwrap();
+        assert_eq!(on["enabled"], true);
+        // Through the gate, a missing port fails with a clear error.
+        let missing = call(
+            &window,
+            "machine_connect",
+            json!({ "port": serial, "baud": 115200 }),
+        )
+        .unwrap_err();
+        assert!(
+            missing
+                .as_str()
+                .unwrap()
+                .starts_with("Couldn't open BF-NO-SUCH-PORT"),
+            "{missing}"
+        );
+        let state = call(&window, "machine_state", json!({})).unwrap();
+        assert_eq!(state["status"], "disconnected");
+        assert_eq!(state["reason"], missing);
+
+        // Switching off forgets the acceptance.
+        call(
+            &window,
+            "machine_set_real_hardware",
+            json!({ "enabled": false }),
+        )
+        .unwrap();
+        let state = call(&window, "machine_real_hardware", json!({})).unwrap();
+        assert_eq!(state["enabled"], false);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

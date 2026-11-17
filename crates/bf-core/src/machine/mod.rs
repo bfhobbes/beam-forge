@@ -89,6 +89,18 @@ impl PortAddress {
         }
     }
 
+    /// Whether this address may reach a real laser rather than a simulator:
+    /// any serial port, and TCP to anything but this computer (a network
+    /// bridge such as an ESP32 board). The bundled simulator and loopback
+    /// TCP (the simulator app) are taken to be simulators.
+    pub fn may_be_hardware(&self) -> bool {
+        match self {
+            PortAddress::Serial { .. } => true,
+            PortAddress::Tcp { host, .. } => !is_loopback(host),
+            PortAddress::Launch => false,
+        }
+    }
+
     /// A stable key for remembering the last port used.
     pub fn key(&self) -> String {
         match self {
@@ -97,6 +109,14 @@ impl PortAddress {
             PortAddress::Launch => "launch:simulator".to_string(),
         }
     }
+}
+
+fn is_loopback(host: &str) -> bool {
+    let host = host.trim_start_matches('[').trim_end_matches(']');
+    host.eq_ignore_ascii_case("localhost")
+        || host
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|ip| ip.is_loopback())
 }
 
 /// A port the user can pick, with USB details when the OS reports them.
@@ -193,6 +213,29 @@ mod tests {
         let built_in = PortInfo::built_in_simulator();
         assert_eq!(built_in.label, "Built-in simulator");
         assert_eq!(built_in.key, "launch:simulator");
+    }
+
+    #[test]
+    fn only_simulator_addresses_skip_the_real_hardware_gate() {
+        let tcp = |host: &str| PortAddress::Tcp {
+            host: host.into(),
+            port: 23,
+        };
+        assert!(
+            PortAddress::Serial {
+                path: "/dev/ttyUSB0".into()
+            }
+            .may_be_hardware()
+        );
+        assert!(tcp("192.168.1.40").may_be_hardware());
+        assert!(tcp("laser.local").may_be_hardware());
+        assert!(!tcp("127.0.0.1").may_be_hardware());
+        assert!(!tcp("127.8.0.1").may_be_hardware());
+        assert!(!tcp("localhost").may_be_hardware());
+        assert!(!tcp("::1").may_be_hardware());
+        assert!(!tcp("[::1]").may_be_hardware());
+        assert!(!PortAddress::simulator().may_be_hardware());
+        assert!(!PortAddress::Launch.may_be_hardware());
     }
 
     #[test]

@@ -11,6 +11,8 @@ const bundles = fileURLToPath(new URL("./fixtures/release-bundles/", import.meta
 const publicKey = readFileSync(new URL("./fixtures/release-bundles.pub", import.meta.url), "utf8");
 const appImage = join(bundles, "linux/appimage/Beam Forge_9.9.9_amd64.AppImage");
 
+const download = "https://github.com/bfhobbes/beam-forge/releases/download/v9.9.9";
+
 // What GitHub's release API returns: spaces in asset names become dots.
 const release = {
   body: "## What's Changed\n* Linux\n",
@@ -21,7 +23,11 @@ const release = {
     "Beam.Forge_9.9.9_amd64.AppImage",
     "Beam.Forge_9.9.9_amd64.deb",
     "Beam.Forge.Simulator_9.9.9_amd64.deb",
-  ].map((name, id) => ({ name, url: `https://api.github.com/assets/${id}` })),
+  ].map((name, id) => ({
+    name,
+    url: `https://api.github.com/repos/bfhobbes/beam-forge/releases/assets/${id}`,
+    browser_download_url: `https://github.com/bfhobbes/beam-forge/releases/download/v9.9.9/${name}`,
+  })),
 };
 
 test("Tauri updater signatures verify against the public key", () => {
@@ -42,7 +48,7 @@ test("Tauri updater signatures verify against the public key", () => {
   assert.throws(() => verifySignature(bytes, signature, otherKey), /different key/);
 });
 
-test("the manifest lists every platform with its signature and API asset URL", () => {
+test("the manifest lists every platform with its signature and public download URL", () => {
   const found = findPackages(bundles, "9.9.9", publicKey);
   const manifest = buildManifest({ version: "9.9.9", release, found });
   assert.equal(manifest.version, "9.9.9");
@@ -51,12 +57,12 @@ test("the manifest lists every platform with its signature and API asset URL", (
   assert.deepEqual(
     Object.fromEntries(Object.entries(manifest.platforms).map(([key, { url }]) => [key, url])),
     {
-      "windows-x86_64-nsis": "https://api.github.com/assets/0",
-      "windows-x86_64-msi": "https://api.github.com/assets/1",
-      "linux-x86_64-appimage": "https://api.github.com/assets/2",
-      "linux-x86_64-deb": "https://api.github.com/assets/3",
-      "windows-x86_64": "https://api.github.com/assets/0",
-      "linux-x86_64": "https://api.github.com/assets/2",
+      "windows-x86_64-nsis": `${download}/Beam.Forge_9.9.9_x64-setup.exe`,
+      "windows-x86_64-msi": `${download}/Beam.Forge_9.9.9_x64_en-US.msi`,
+      "linux-x86_64-appimage": `${download}/Beam.Forge_9.9.9_amd64.AppImage`,
+      "linux-x86_64-deb": `${download}/Beam.Forge_9.9.9_amd64.deb`,
+      "windows-x86_64": `${download}/Beam.Forge_9.9.9_x64-setup.exe`,
+      "linux-x86_64": `${download}/Beam.Forge_9.9.9_amd64.AppImage`,
     },
   );
   assert.equal(

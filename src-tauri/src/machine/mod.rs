@@ -5,6 +5,7 @@
 //! for the console;
 //! `machine:status` carries each polled [`MachineStatus`].
 //!
+//! [`safety`] keeps the real-hardware gate that [`machine_connect`] checks;
 //! [`settings`] reads and writes `$` settings and keeps the machine profile;
 //! [`job`] runs GCode files and generated jobs; [`control`] jogs, homes,
 //! sets the work origin, toggles air assist and test fires.
@@ -12,6 +13,7 @@
 pub mod control;
 pub mod job;
 mod launch;
+pub mod safety;
 pub mod settings;
 mod transport;
 
@@ -108,6 +110,7 @@ pub async fn machine_connect<R: Runtime>(
     baud: Option<u32>,
 ) -> Result<MachineInfo, String> {
     let baud = baud.unwrap_or(DEFAULT_BAUD);
+    safety::check(&app, &port.address)?;
     let generation = {
         let mut inner = Machine::of(&app).lock();
         if !matches!(inner.state, ConnectionState::Disconnected { .. }) {
