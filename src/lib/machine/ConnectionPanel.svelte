@@ -6,6 +6,7 @@
   import StatusReadout from "./StatusReadout.svelte";
   import LaserModeWarning from "./LaserModeWarning.svelte";
   import MachineSettingsDialog from "./MachineSettingsDialog.svelte";
+  import SafetyNotice from "./SafetyNotice.svelte";
 
   const selectClass =
     "h-8 min-w-0 rounded-lg border border-input bg-background px-2 text-sm disabled:opacity-50";
@@ -67,6 +68,7 @@
       <Button class="flex-1" onclick={() => machine.connect()}><Plug />Connect</Button>
     {/if}
   </div>
+  <SafetyNotice />
   {#if !machine.available}
     <p class="text-xs text-muted-foreground">
       Browser preview: machine connection needs the desktop app.
