@@ -181,6 +181,8 @@ impl Simulator {
                 self.gc_position = self.machine_position();
                 self.ops.clear();
                 self.dwell_until = None;
+                self.dwell_paused = None;
+                self.door_restore = None;
                 self.stop_reason = None;
                 self.critical_alarm(code);
             }

@@ -1089,6 +1089,149 @@ fn a_dwell_between_m3_moves_burns_where_the_head_stopped() {
     }
 }
 
+/// Starts `M3 S500 M8` and a 2 s dwell, opens the door 1 s in and checks
+/// the burn stopped there with the laser and air assist off.
+fn open_the_door_during_an_m3_dwell(sim: &mut Simulator) {
+    assert_eq!(send(sim, b"M3 S500 M8\nG4 P2\nM5\n"), "ok\r\n");
+    sim.advance(Duration::from_secs(1));
+    assert!(sim.laser_power() > 0.0 && sim.air_assist());
+
+    sim.set_door_open(true);
+    assert_eq!(send(sim, b""), "[MSG:Check Door]\r\n");
+    assert_eq!(sim.state(), MachineState::Door(1));
+    assert_eq!((sim.laser_power(), sim.air_assist()), (0.0, false));
+    // Lines wait while the door holds the machine.
+    assert_eq!(send(sim, b"$G\n"), "");
+    let report = send(sim, b"?");
+    assert!(!report.contains("|A:"), "{report}");
+
+    // Nothing burns while it is open, however long.
+    sim.advance(Duration::from_secs(10));
+    let trace = sim.trace();
+    assert_eq!(trace.len(), 1, "{trace:?}");
+    assert!(trace[0].is_stationary());
+    assert_eq!(trace[0].t1 - trace[0].t0, Duration::from_secs(1));
+    assert!(trace[0].air_assist);
+    assert_eq!(sim.state(), MachineState::Door(1));
+    assert_eq!(String::from_utf8(sim.take_output()).unwrap(), "");
+    sim.set_door_open(false);
+    assert_eq!(sim.state(), MachineState::Door(0));
+}
+
+#[test]
+fn the_door_turns_an_m3_dwell_off_and_resume_restores_air_then_the_dwell() {
+    let mut sim = laser();
+    send(&mut sim, b"G1 F600\n");
+    open_the_door_during_an_m3_dwell(&mut sim);
+
+    // Resume: air assist first, then GRBL's 1 s coolant delay in Door:3.
+    // GRBL's door restore sends no message, unlike the spindle stop
+    // override's [MSG:Restoring spindle].
+    let resumed = sim.now();
+    assert_eq!(send(&mut sim, b"~"), "");
+    assert_eq!(sim.state(), MachineState::Door(3));
+    assert!(sim.air_assist());
+    // In laser mode the laser comes back with the next motion, not here.
+    assert_eq!(sim.laser_power(), 0.0);
+    sim.advance(Duration::from_millis(999));
+    assert_eq!(sim.state(), MachineState::Door(3));
+    sim.advance(Duration::from_millis(1));
+    assert_eq!(sim.state(), MachineState::Idle);
+
+    // The dwell then carries on for the second it had left, and the queued
+    // lines answer.
+    sim.advance(Duration::from_millis(999));
+    assert_eq!(String::from_utf8(sim.take_output()).unwrap(), "");
+    sim.advance(Duration::from_millis(1));
+    assert_eq!(
+        String::from_utf8(sim.take_output()).unwrap(),
+        "ok\r\nok\r\n[GC:G1 G54 G17 G21 G90 G94 M5 M8 T0 F600 S500]\r\nok\r\n"
+    );
+    assert_eq!(sim.now() - resumed, Duration::from_secs(2));
+    assert_eq!(sim.trace().len(), 1, "{:?}", sim.trace());
+
+    // The next move lights the laser again.
+    run(&mut sim, "M3 S500\nG1 X10");
+    let trace = sim.take_trace();
+    let moves: Vec<_> = trace.iter().filter(|s| !s.is_stationary()).collect();
+    assert!(!moves.is_empty());
+    assert!(
+        moves
+            .iter()
+            .all(|s| close(s.power, 0.5, 1e-9) && s.air_assist)
+    );
+}
+
+#[test]
+fn without_laser_mode_a_door_resume_restarts_the_spindle_and_waits_4_s() {
+    let mut sim = laser_with(&[(32, 0.0)]);
+    open_the_door_during_an_m3_dwell(&mut sim);
+
+    // The spindle restarts at once, then air assist after 4 s, then the
+    // cycle resumes after another 1 s.
+    let resumed = sim.now();
+    assert_eq!(send(&mut sim, b"~"), "");
+    assert_eq!(sim.state(), MachineState::Door(3));
+    assert_eq!((sim.laser_power(), sim.air_assist()), (0.5, false));
+    sim.advance(Duration::from_secs(4));
+    assert_eq!((sim.laser_power(), sim.air_assist()), (0.5, true));
+    assert_eq!(sim.state(), MachineState::Door(3));
+    sim.advance(Duration::from_secs(1));
+    assert_eq!(sim.state(), MachineState::Idle);
+    sim.advance(Duration::from_secs(2));
+    let output = String::from_utf8(sim.take_output()).unwrap();
+    assert!(!output.contains("Restoring"), "{output}");
+    assert!(output.ends_with("]\r\nok\r\n"), "{output}");
+
+    // A spindle burns through the restore: 4 s without air, then 1 s
+    // of restore and the dwell's last second with it.
+    let burns = &sim.trace()[1..];
+    assert_eq!(burns.len(), 2, "{burns:?}");
+    assert_eq!(
+        (burns[0].t0, burns[0].t1),
+        (resumed, resumed + Duration::from_secs(4))
+    );
+    assert!(!burns[0].air_assist);
+    assert_eq!(burns[1].t1 - burns[1].t0, Duration::from_secs(2));
+    assert!(burns[1].air_assist);
+}
+
+#[test]
+fn opening_the_door_during_the_restore_stops_everything_again() {
+    let mut sim = laser_with(&[(32, 0.0)]);
+    open_the_door_during_an_m3_dwell(&mut sim);
+    send(&mut sim, b"~");
+    sim.advance(Duration::from_secs(2));
+    assert_eq!(sim.laser_power(), 0.5);
+
+    sim.set_door_open(true);
+    assert_eq!(send(&mut sim, b""), "[MSG:Check Door]\r\n");
+    assert_eq!(sim.state(), MachineState::Door(1));
+    assert_eq!((sim.laser_power(), sim.air_assist()), (0.0, false));
+    sim.advance(Duration::from_secs(10));
+    assert_eq!(sim.state(), MachineState::Door(1));
+    assert!(!sim.air_assist());
+
+    // 0x84 with the switch closed repeats the message and stays put.
+    sim.set_door_open(false);
+    assert_eq!(send(&mut sim, &[0x84]), "[MSG:Check Door]\r\n");
+    assert_eq!(sim.state(), MachineState::Door(0));
+}
+
+#[test]
+fn the_door_stops_a_running_m3_burn_once_the_head_stops() {
+    let mut sim = laser();
+    sim.feed(b"G1 X50 F600 M3 S1000 M8\n");
+    sim.advance(Duration::from_secs(1));
+    sim.set_door_open(true);
+    // GRBL decelerates with the laser on, then de-energizes.
+    sim.advance(Duration::from_secs(5));
+    assert_eq!(sim.state(), MachineState::Door(1));
+    assert_eq!((sim.laser_power(), sim.air_assist()), (0.0, false));
+    let trace = sim.trace();
+    assert!(!trace.iter().any(TraceSegment::is_stationary), "{trace:?}");
+}
+
 // ---- soft limits ----
 
 fn soft_limited() -> Simulator {
