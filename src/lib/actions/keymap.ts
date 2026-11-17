@@ -36,6 +36,12 @@ export const defaultKeymap: Readonly<Record<string, Shortcut>> = {
   "edit.nudge-down-far": "Shift+ArrowDown",
   "edit.group": "Mod+G",
   "edit.ungroup": "Mod+Shift+G",
+  "edit.paste-in-place": "Mod+Shift+V",
+
+  "arrange.bring-forward": "Mod+]",
+  "arrange.send-backward": "Mod+[",
+  "arrange.mirror-horizontal": "Shift+H",
+  "arrange.mirror-vertical": "Shift+V",
 
   "file.new": "Mod+N",
   "file.open": "Mod+O",

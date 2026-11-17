@@ -9,8 +9,11 @@ import {
   type Transform,
 } from "#lib/document/transform.js";
 import {
+  alignObjects,
   anchorPoint,
+  distributeObjects,
   dragTransform,
+  mirrorObjects,
   propertyTransform,
   readProperties,
   selectionBounds,
@@ -278,5 +281,58 @@ describe("numeric properties", () => {
     const a = findPlacement(apply(d, ["a"], rotated).objects, "a")!.object.transform;
     const b = findPlacement(apply(d, ["a"], spin).objects, "a")!.object.transform;
     for (let i = 0; i < 6; i++) expect(a[i]).toBeCloseTo(b[i], 9);
+  });
+});
+
+describe("align, distribute and mirror", () => {
+  const boundsOf = (d: DesignDocument, id: string) => selectionBounds(d, [id]);
+  const three = () => doc(rect("a", 0, 0), rect("b", 30, 10, 20, 10), rect("c", 100, 40));
+
+  it("aligns each object's edge or centre to the selection's", () => {
+    const d = three();
+    const all = ["a", "b", "c"];
+    const target = selectionBounds(d, all)!;
+    const left = applyCommand(d, alignObjects(d, all, "left", target)).doc;
+    for (const id of all) expect(boundsOf(left, id)!.minX).toBeCloseTo(0, 9);
+    const top = applyCommand(d, alignObjects(d, all, "top", target)).doc;
+    for (const id of all) expect(boundsOf(top, id)!.maxY).toBeCloseTo(45, 9);
+    const centre = applyCommand(d, alignObjects(d, all, "centre", target)).doc;
+    expectBounds(boundsOf(centre, "b"), { minX: 45, minY: 10, maxX: 65, maxY: 20 });
+    const middle = applyCommand(d, alignObjects(d, all, "middle", target)).doc;
+    expectBounds(boundsOf(middle, "a"), { minX: 0, minY: 20, maxX: 10, maxY: 25 });
+  });
+
+  it("aligns to the bed", () => {
+    const d = three();
+    const bed = { minX: 0, minY: 0, maxX: 400, maxY: 400 };
+    const right = applyCommand(d, alignObjects(d, ["a"], "right", bed)).doc;
+    expectBounds(boundsOf(right, "a"), { minX: 390, minY: 0, maxX: 400, maxY: 5 });
+    expect(right.objects[1]).toBe(d.objects[1]);
+    const bottom = applyCommand(d, alignObjects(d, ["c"], "bottom", bed)).doc;
+    expectBounds(boundsOf(bottom, "c"), { minX: 100, minY: 0, maxX: 110, maxY: 5 });
+  });
+
+  it("distributes equal gaps between neighbours, the outermost staying put", () => {
+    // Widths 10, 20, 10 spanning 0..110: 70 mm of gaps, 35 each.
+    const d = three();
+    const spread = applyCommand(d, distributeObjects(d, ["c", "a", "b"], "x")).doc;
+    expectBounds(boundsOf(spread, "a"), { minX: 0, minY: 0, maxX: 10, maxY: 5 });
+    expectBounds(boundsOf(spread, "b"), { minX: 45, minY: 10, maxX: 65, maxY: 20 });
+    expectBounds(boundsOf(spread, "c"), { minX: 100, minY: 40, maxX: 110, maxY: 45 });
+    // Heights 5, 10, 5 spanning 0..45: 25 mm of gaps.
+    const stacked = applyCommand(d, distributeObjects(d, ["a", "b", "c"], "y")).doc;
+    expect(boundsOf(stacked, "b")!.minY).toBeCloseTo(17.5, 9);
+  });
+
+  it("mirrors about the selection's centre, keeping its bounds", () => {
+    const d = doc(rect("a", 0, 0), rect("b", 30, 10));
+    const flipped = applyCommand(d, mirrorObjects(d, ["a", "b"], "horizontal")!).doc;
+    expectBounds(selectionBounds(flipped, ["a", "b"]), selectionBounds(d, ["a", "b"])!);
+    expectBounds(boundsOf(flipped, "a"), { minX: 30, minY: 0, maxX: 40, maxY: 5 });
+    const [a, , , dd] = flipped.objects[0].transform;
+    expect([a, dd]).toEqual([-1, 1]);
+    const upside = applyCommand(d, mirrorObjects(d, ["a", "b"], "vertical")!).doc;
+    expectBounds(boundsOf(upside, "a"), { minX: 0, minY: 10, maxX: 10, maxY: 15 });
+    expect(mirrorObjects(d, [], "vertical")).toBeNull();
   });
 });
