@@ -2,9 +2,12 @@
 
 # Beam Forge
 
-A laser cutter editor and controller with a modern UX: Figma-style canvas, command palette, live toolpath preview, and guided workflows. Built for GCode controllers (GRBL first) over USB serial. Windows first.
+A laser cutter editor and controller with a modern UX: Figma-style canvas, command palette, live toolpath preview, and guided workflows. Built for GCode controllers (GRBL first) over USB serial. Runs on Windows and Linux.
 
-Status: app scaffold. See the [roadmap](../../issues/32).
+Status: alpha. Drawing, text, file import, toolpath preview, GCode export and machine control (jogging, framing and running jobs) all work, and are tested mostly against the simulator. See the [roadmap](../../issues/1).
+
+> [!WARNING]
+> Beam Forge is alpha software and has had little testing on real lasers. It may have bugs that move the head unexpectedly or leave the laser on. Never leave the laser running unattended, and keep a way to cut its power within reach. You use Beam Forge at your own risk; it is provided "as is", without warranty (see [LICENSE](LICENSE)). The app won't connect to a real laser until you turn on **Real laser** and accept a safety notice; the simulators work without it.
 
 ## Run
 
@@ -17,7 +20,7 @@ npm run desktop:dev
 
 `npm run dev` serves a browser preview at http://127.0.0.1:1420. It is labelled as a preview and has no Rust side, so it can't reach the machine.
 
-`npm run desktop:build` writes installers to `target/release/bundle` (NSIS and MSI). They are unsigned.
+`npm run desktop:build` writes packages for the platform you build on to `target/release/bundle`: NSIS and MSI installers on Windows, an AppImage and a `.deb` on Linux. They aren't code-signed, so Windows SmartScreen warns before running them. Releases are published from `v*` tags; see [desktop updates](docs/desktop-updates.md).
 
 ## Simulator
 
