@@ -17,7 +17,7 @@ function setup(layers = [newLayer(0), newLayer(1)]) {
   const editor = new DocumentEditor(new Lifecycle());
   for (const layer of layers) editor.execute(addLayer(layer));
   editor.load(editor.doc); // a clean history
-  const selection = new Selection(() => editor.doc);
+  const selection = new Selection(editor);
   const drawingLayer = new DrawingLayer();
   let done = 0;
   const tool = new DrawTool(editor, selection, drawingLayer, () => done++);
