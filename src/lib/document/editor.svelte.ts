@@ -23,6 +23,7 @@ export interface ExecuteOptions {
  */
 export class DocumentEditor {
   doc = $state.raw<DesignDocument>(emptyDocument());
+  #generation = $state(0);
   #undo = $state.raw<Step[]>([]);
   #redo = $state.raw<Step[]>([]);
   #coalescing: string | null = null;
@@ -31,6 +32,11 @@ export class DocumentEditor {
   constructor(lifecycle: Lifecycle, doc: DesignDocument = emptyDocument()) {
     this.#lifecycle = lifecycle;
     this.doc = doc;
+  }
+
+  /** Counts `load` calls: it changes when a new document replaces the open one, never on edits, undo or redo. */
+  get generation(): number {
+    return this.#generation;
   }
 
   get canUndo(): boolean {
@@ -94,6 +100,7 @@ export class DocumentEditor {
   load(doc: DesignDocument): boolean {
     if (!this.#lifecycle.canEdit()) return false;
     this.doc = doc;
+    this.#generation += 1;
     this.#undo = [];
     this.#redo = [];
     this.#coalescing = null;
