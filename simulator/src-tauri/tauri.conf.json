@@ -1,7 +1,7 @@
 {
   "$schema": "../../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Beam Forge Simulator",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "identifier": "dev.bfhobbes.beamforge.simulator",
   "build": {
     "beforeDevCommand": "npm run dev",
