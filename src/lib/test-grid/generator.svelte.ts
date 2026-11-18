@@ -36,8 +36,6 @@ export class TestGridGenerator {
   grid = $state.raw<TestGrid | null>(null);
   /** Why the settings don't make a grid (e.g. it doesn't fit), or "". */
   problem = $state("");
-  /** Set after a grid is added, until the dialog closes. */
-  added = $state(false);
 
   readonly #editor: DocumentEditor;
   readonly #selection: Selection;
@@ -81,7 +79,6 @@ export class TestGridGenerator {
       };
     }
     this.view = "settings";
-    this.added = false;
     return this.refresh();
   }
 
@@ -92,7 +89,18 @@ export class TestGridGenerator {
 
   close(): void {
     this.view = null;
-    this.added = false;
+  }
+
+  /**
+   * Whether a run that cut `layerIds` burned the document's latest grid, so
+   * its cells are ready to be judged and one saved as a preset.
+   */
+  burnedIn(layerIds: Iterable<string>): boolean {
+    const cells = this.cells;
+    if (!cells) return false;
+    const ids = new Set(cells.cells.flat().flatMap((cell) => (cell ? [cell.id] : [])));
+    for (const id of layerIds) if (ids.has(id)) return true;
+    return false;
   }
 
   update(changes: Partial<TestGridSettings>): Promise<void> {
@@ -122,8 +130,10 @@ export class TestGridGenerator {
   }
 
   /**
-   * Adds the grid to the document as one undo step, selects it and shows
-   * the cell picker. False if there is no grid or editing isn't allowed.
+   * Adds the grid to the document as one undo step, selects it and closes
+   * the dialog: there's nothing to pick until the grid has been burned. The
+   * Job panel offers the cell picker from then on. False if there is no grid
+   * or editing isn't allowed.
    */
   async add(): Promise<boolean> {
     await this.refresh();
@@ -140,8 +150,7 @@ export class TestGridGenerator {
     // The next grid gets ids of its own.
     this.#id = gridId();
     this.grid = null;
-    this.added = true;
-    this.view = "pick";
+    this.view = null;
     return true;
   }
 }

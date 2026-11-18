@@ -343,9 +343,7 @@
       <Dialog.Header>
         <Dialog.Title>Save a test cell as a preset</Dialog.Title>
         <Dialog.Description>
-          {testGrid.added
-            ? "Added the grid. Burn it, then pick the cell that came out best: its settings become a material preset for this machine."
-            : "Pick the cell that came out best: its settings become a material preset for this machine."}
+          Pick the cell that came out best: its settings become a material preset for this machine.
         </Dialog.Description>
       </Dialog.Header>
 
