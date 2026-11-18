@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick } from "svelte";
+  import { onMount, tick, untrack } from "svelte";
   import { actions } from "#lib/actions/registry.svelte.js";
   import { isTyping } from "#lib/actions/shortcut.js";
   import { addLayer, batch, insert } from "#lib/document/commands.js";
@@ -8,7 +8,7 @@
   import type { Point } from "#lib/document/model.js";
   import { selection } from "#lib/document/selection.svelte.js";
   import { arrowDirection, machineControl } from "#lib/machine/control.svelte.js";
-  import { bedBounds, DEFAULT_BED, type Bed } from "./bed.js";
+  import { bedBounds, type Bed } from "./bed.js";
   import { drawFrame, readTheme, RULER_SIZE, type CanvasTheme } from "./render.js";
   import type { ShapeTool } from "./draw.js";
   import { DrawTool } from "./draw-tool.svelte.js";
@@ -40,7 +40,7 @@
    * double-clicking text with the select tool edits it too.
    */
   let {
-    bed = DEFAULT_BED,
+    bed,
     selecting = true,
     drawing = null,
     ondrawn = () => {},
@@ -49,7 +49,8 @@
     texting = false,
     showFills = false,
   }: {
-    bed?: Bed;
+    /** The machine's work area: the active profile's bed. */
+    bed: Bed;
     /** Whether the select tool is active. */
     selecting?: boolean;
     /** The drawing tool that is active, if any. */
@@ -102,6 +103,17 @@
   function fit(bounds: Bounds) {
     setView(fitBounds(bounds, content, FIT_PADDING));
   }
+
+  // A different bed (another machine's profile, or the profile loading after
+  // the first fit) is fitted again; the same size keeps the user's zoom.
+  let fittedBed = "";
+  $effect(() => {
+    const key = `${bed.width}x${bed.height}`;
+    untrack(() => {
+      if (view && fittedBed && key !== fittedBed) fit(bedBounds(bed));
+      if (view) fittedBed = key;
+    });
+  });
 
   function zoomAtCentre(factor: number) {
     if (!view) return;
@@ -346,7 +358,10 @@
     const measure = () => {
       const { width, height } = element.getBoundingClientRect();
       size = { width, height, dpr: window.devicePixelRatio || 1 };
-      if (!view && width > 0 && height > 0) fit(bedBounds(bed));
+      if (!view && width > 0 && height > 0) {
+        fit(bedBounds(bed));
+        fittedBed = `${bed.width}x${bed.height}`;
+      }
     };
     const resize = new ResizeObserver(measure);
     resize.observe(element);
