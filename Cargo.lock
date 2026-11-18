@@ -129,7 +129,7 @@ checksum = "ac07cdecf99051d9a5238b80f35af32cdeba5b336e55d957b318b50137e18da5"
 
 [[package]]
 name = "beam-forge"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "bf-core",
  "bf-sim",
@@ -147,7 +147,7 @@ dependencies = [
 
 [[package]]
 name = "bf-core"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "bf-sim",
  "dxf",
@@ -162,7 +162,7 @@ dependencies = [
 
 [[package]]
 name = "bf-sim"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "serde",
  "serde_json",
@@ -170,7 +170,7 @@ dependencies = [
 
 [[package]]
 name = "bf-simulator"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "bf-sim",
  "serde",
