@@ -106,6 +106,7 @@ pub fn run() {
         .plugin(updater_plugin())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .build(tauri::generate_context!())
         .expect("Unable to start Beam Forge")
         .run(|app, event| {

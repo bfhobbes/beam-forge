@@ -189,3 +189,106 @@ export function propertyTransform(
       return about(pivot, rotate(((value - current.rotation) * Math.PI) / 180));
   }
 }
+
+export type AlignEdge = "left" | "centre" | "right" | "top" | "middle" | "bottom";
+
+/** Where each edge sits on a box, and on which axis. */
+const ALIGN: Readonly<Record<AlignEdge, { axis: "x" | "y"; at: 0 | 0.5 | 1 }>> = {
+  left: { axis: "x", at: 0 },
+  centre: { axis: "x", at: 0.5 },
+  right: { axis: "x", at: 1 },
+  bottom: { axis: "y", at: 0 },
+  middle: { axis: "y", at: 0.5 },
+  top: { axis: "y", at: 1 },
+};
+
+function edgeOf(bounds: Bounds, axis: "x" | "y", at: number): number {
+  const [min, max] = axis === "x" ? [bounds.minX, bounds.maxX] : [bounds.minY, bounds.maxY];
+  return min + (max - min) * at;
+}
+
+/** Moves each object by its own translation; objects not listed stay put. */
+function moveEach(doc: DesignDocument, moves: ReadonlyMap<string, Point>): Command {
+  return setTransforms(
+    Object.fromEntries(
+      doc.objects
+        .filter((object) => moves.has(object.id))
+        .map((object) => {
+          const { x, y } = moves.get(object.id)!;
+          return [object.id, multiply(translate(x, y), object.transform)];
+        }),
+    ),
+  );
+}
+
+/**
+ * Lines up each top-level object's edge or centre with the same edge of
+ * `target`: the selection's bounds, or the bed's.
+ */
+export function alignObjects(
+  doc: DesignDocument,
+  ids: readonly string[],
+  edge: AlignEdge,
+  target: Bounds,
+): Command {
+  const scene = buildScene(doc);
+  const { axis, at } = ALIGN[edge];
+  const goal = edgeOf(target, axis, at);
+  const moves = new Map<string, Point>();
+  for (const id of ids) {
+    const bounds = scene.boundsOf([id]);
+    if (!bounds) continue;
+    const by = goal - edgeOf(bounds, axis, at);
+    moves.set(id, axis === "x" ? { x: by, y: 0 } : { x: 0, y: by });
+  }
+  return moveEach(doc, moves);
+}
+
+/**
+ * Spaces top-level objects evenly along an axis: the outermost two stay put
+ * and the gaps between neighbouring boxes become equal.
+ */
+export function distributeObjects(
+  doc: DesignDocument,
+  ids: readonly string[],
+  axis: "x" | "y",
+): Command {
+  const scene = buildScene(doc);
+  const boxes = ids
+    .flatMap((id) => {
+      const bounds = scene.boundsOf([id]);
+      return bounds ? [{ id, bounds }] : [];
+    })
+    .map(({ id, bounds }) => ({
+      id,
+      min: axis === "x" ? bounds.minX : bounds.minY,
+      size: axis === "x" ? bounds.maxX - bounds.minX : bounds.maxY - bounds.minY,
+    }))
+    .toSorted((a, b) => a.min - b.min);
+  const moves = new Map<string, Point>();
+  if (boxes.length >= 3) {
+    const first = boxes[0];
+    const last = boxes[boxes.length - 1];
+    const sizes = boxes.reduce((sum, box) => sum + box.size, 0);
+    const gap = (last.min + last.size - first.min - sizes) / (boxes.length - 1);
+    let at = first.min;
+    for (const box of boxes) {
+      const by = at - box.min;
+      if (Math.abs(by) > 1e-9) moves.set(box.id, axis === "x" ? { x: by, y: 0 } : { x: 0, y: by });
+      at += box.size + gap;
+    }
+  }
+  return moveEach(doc, moves);
+}
+
+/** Flips top-level objects about the centre of their combined bounds: "horizontal" swaps left and right. */
+export function mirrorObjects(
+  doc: DesignDocument,
+  ids: readonly string[],
+  direction: "horizontal" | "vertical",
+): Command | null {
+  const bounds = selectionBounds(doc, ids);
+  if (!bounds) return null;
+  const flip = direction === "horizontal" ? scale(-1, 1) : scale(1, -1);
+  return transformObjects(doc, ids, about(anchorPoint(bounds, CENTRE), flip));
+}

@@ -8,7 +8,9 @@
   import ProjectFiles from "#lib/project/ProjectFiles.svelte";
   import { project } from "#lib/project/project.svelte.js";
   import { actions } from "#lib/actions/registry.svelte.js";
+  import { arrangeActions } from "#lib/document/arrange-actions.js";
   import { editActions } from "#lib/document/edit-actions.js";
+  import { DEFAULT_BED } from "#lib/canvas/bed.js";
   import { editor } from "#lib/document/editor.svelte.js";
   import { selection } from "#lib/document/selection.svelte.js";
   import CanvasArea from "#lib/shell/CanvasArea.svelte";
@@ -34,6 +36,11 @@
   const layout = panelLayout("main", [76, 24]);
   let tool = $state<ToolId>("select");
   let cursor = $state<{ x: number; y: number } | null>(null);
+  // Where the pointer last was over the canvas: "Paste" from the palette lands there.
+  let lastCursor: { x: number; y: number } | null = null;
+  $effect(() => {
+    if (cursor) lastCursor = cursor;
+  });
 
   // App-wide: the status bar follows the connection even when the Machine tab is closed.
   onMount(() => {
@@ -48,7 +55,13 @@
   onMount(() => startConsole(machineConsole, () => connection.connected));
   // A running job holds the app busy, so it is followed app-wide too.
   onMount(() => startJob(machineJob, () => connection.connected));
-  onMount(() => actions.register(...editActions(editor, selection)));
+  onMount(() =>
+    actions.register(
+      ...editActions(editor, selection, { pasteTarget: () => lastCursor }),
+      // The bed the canvas draws.
+      ...arrangeActions(editor, selection, () => DEFAULT_BED),
+    ),
+  );
 
   // A running design follows the head's reported position...
   $effect(() => {
