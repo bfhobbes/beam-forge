@@ -945,3 +945,86 @@ fn a_run_plan_says_which_line_makes_each_move_and_where_it_is() {
         }
     }
 }
+
+/// Each layer's lasering moves, by layer name, with the `S` and `F` modal
+/// at each: what the machine actually cuts that layer with.
+fn cuts_by_layer(gcode: &str) -> std::collections::BTreeMap<String, Vec<(String, String)>> {
+    let (mut s, mut f, mut layer) = ("0".to_string(), String::new(), String::new());
+    let mut cuts: std::collections::BTreeMap<String, Vec<(String, String)>> = Default::default();
+    for line in gcode.lines() {
+        if let Some(name) = line.strip_prefix("; Layer ") {
+            layer = name.to_string();
+            continue;
+        }
+        if line.starts_with(';') {
+            continue;
+        }
+        let words: Vec<_> = line.split(' ').collect();
+        for word in &words {
+            if let Some(value) = word.strip_prefix('S') {
+                s = value.to_string();
+            }
+            if let Some(value) = word.strip_prefix('F') {
+                f = value.to_string();
+            }
+        }
+        if words[0] == "G1" && s != "0" {
+            cuts.entry(layer.clone())
+                .or_default()
+                .push((s.clone(), f.clone()));
+        }
+    }
+    cuts
+}
+
+/// A 5 × 5 material test grid through GCode: every cell is cut with its own
+/// speed and power, and the labels with the score layer's.
+#[test]
+fn test_grid_snapshot() {
+    use crate::material_test::{TestGridSettings, test_grid};
+    use crate::project::LayerMode;
+
+    let mut fonts = fontdb::Database::new();
+    fonts.load_font_data(include_bytes!("../text/testdata/Geist-Regular-ascii.ttf").to_vec());
+    let mut settings = TestGridSettings {
+        mode: LayerMode::Line,
+        cell_size: 5.0,
+        gap: 1.0,
+        ..TestGridSettings::default()
+    };
+    settings.labels.font_family = "Geist".into();
+    let grid = test_grid(&fonts, "grid", &settings, profile().bed).unwrap();
+    let mut doc = document(grid.layers, grid.objects);
+
+    // Every cell's moves use its layer's settings; the labels' theirs.
+    let job = generate(&doc, &profile(), absolute(), None).unwrap();
+    let cuts = cuts_by_layer(&job.gcode);
+    assert_eq!(cuts.len(), 26, "the label layer and 25 cells");
+    for layer in &doc.layers {
+        let expected = (
+            grbl::number(layer.max_power / 100.0 * profile().max_spindle),
+            grbl::number(layer.speed),
+        );
+        let moves = &cuts[&layer.name];
+        assert!(!moves.is_empty(), "{} cuts", layer.name);
+        assert!(
+            moves.iter().all(|cut| *cut == expected),
+            "{} is cut at {expected:?}: {moves:?}",
+            layer.name
+        );
+    }
+    assert_eq!(cuts["Test labels"][0], ("100".into(), "3000".into()));
+    assert_eq!(
+        cuts["3000 mm/min · 100%"][0],
+        ("1000".into(), "3000".into())
+    );
+    assert_eq!(cuts["1000 mm/min · 20%"][0], ("200".into(), "1000".into()));
+    let report = bf_sim::check(&job.gcode, Profile::diode_laser());
+    assert!(report.passed(), "{report}");
+
+    // The snapshot is of the cells: the labels' outlines are long, and
+    // checked above.
+    doc.layers[0].output = false;
+    let cells = generate(&doc, &profile(), absolute(), None).unwrap();
+    snapshot("test-grid", &cells.gcode);
+}

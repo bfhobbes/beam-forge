@@ -6,6 +6,7 @@ mod import;
 mod machine;
 mod presets;
 mod project;
+mod test_grid;
 mod text;
 #[cfg(test)]
 mod update_tests;
@@ -97,6 +98,7 @@ fn commands<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> 
             presets::presets_import,
             text::text_fonts,
             text::text_layout,
+            test_grid::test_grid_generate,
         ])
 }
 
@@ -337,6 +339,25 @@ mod ipc_tests {
         )
         .unwrap_err();
         assert_eq!(error, json!("Height must be above zero"));
+    }
+
+    #[test]
+    fn test_grid_settings_are_checked_before_fonts_are_needed() {
+        let (_app, window) = main_window();
+        let mut settings =
+            serde_json::to_value(bf_core::material_test::TestGridSettings::default()).unwrap();
+        settings["cellSize"] = json!(0);
+        let error = call(
+            &window,
+            "test_grid_generate",
+            json!({
+                "id": "grid",
+                "settings": settings,
+                "bed": { "width": 400, "height": 400 },
+            }),
+        )
+        .unwrap_err();
+        assert_eq!(error, json!("Cell size must be above zero"));
     }
 
     #[test]

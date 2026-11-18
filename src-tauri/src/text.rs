@@ -11,7 +11,7 @@ pub fn warm() {
     });
 }
 
-async fn off_main<T: Send + 'static>(
+pub(crate) async fn off_main<T: Send + 'static>(
     work: impl FnOnce() -> T + Send + 'static,
 ) -> Result<T, String> {
     tauri::async_runtime::spawn_blocking(work)
