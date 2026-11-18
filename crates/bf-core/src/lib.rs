@@ -1,12 +1,14 @@
 //! Beam Forge product logic, independent of Tauri so it can be unit-tested
 //! without a window or a machine. Geometry, toolpath planning ([`plan`]),
 //! GCode generation ([`gcode`]), job time estimates ([`estimate`]), file import ([`import`]), the material
-//! library ([`presets`]) and the machine driver ([`machine`]) live here.
+//! library ([`presets`]), material test grids ([`material_test`]) and the
+//! machine driver ([`machine`]) live here.
 
 pub mod estimate;
 pub mod gcode;
 pub mod import;
 pub mod machine;
+pub mod material_test;
 pub mod plan;
 pub mod presets;
 pub mod project;

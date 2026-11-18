@@ -5,6 +5,7 @@
   import Actions from "#lib/actions/Actions.svelte";
   import FileImport from "#lib/import/FileImport.svelte";
   import JobSetupDialog from "#lib/gcode/JobSetupDialog.svelte";
+  import TestGridDialog from "#lib/test-grid/TestGridDialog.svelte";
   import ProjectFiles from "#lib/project/ProjectFiles.svelte";
   import { project } from "#lib/project/project.svelte.js";
   import { actions } from "#lib/actions/registry.svelte.js";
@@ -113,4 +114,5 @@
   <FileImport />
   <ProjectFiles />
   <JobSetupDialog />
+  <TestGridDialog />
 </Tooltip.Provider>
