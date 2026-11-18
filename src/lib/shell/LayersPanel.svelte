@@ -20,6 +20,8 @@
   import type { CutLayer, LayerMode } from "#lib/document/model.js";
   import { drawingLayer } from "#lib/document/drawing-layer.svelte.js";
   import { selection } from "#lib/document/selection.svelte.js";
+  import PresetPicker from "#lib/presets/PresetPicker.svelte";
+  import { presetModified } from "#lib/presets/presets.js";
   import { clickSwatch, editLayerSetting } from "./layers-panel.js";
   import NumberField from "./NumberField.svelte";
 
@@ -99,7 +101,9 @@
   function summary(layer: CutLayer): string {
     const mode = layer.mode === "fill" ? "Fill" : "Line";
     const passes = layer.passes > 1 ? ` · ×${layer.passes}` : "";
-    return `${mode} · ${layer.speed} mm/min · ${layer.maxPower}%${passes}`;
+    const settings = `${mode} · ${layer.speed} mm/min · ${layer.maxPower}%${passes}`;
+    if (!layer.preset) return settings;
+    return `${layer.preset.name}${presetModified(layer) ? " (modified)" : ""} · ${settings}`;
   }
 
   const numberFields: {
@@ -273,6 +277,8 @@
         <Trash2Icon />
       </Button>
     </div>
+
+    <PresetPicker {layer} onedit={(changes) => edit(layer, changes, false)} />
 
     <ToggleGroup.Root
       type="single"

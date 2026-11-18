@@ -4,6 +4,7 @@ mod files;
 mod gcode;
 mod import;
 mod machine;
+mod presets;
 mod project;
 mod text;
 #[cfg(test)]
@@ -43,6 +44,7 @@ fn commands<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> 
         .manage(machine::job::JobPicker::default())
         .manage(gcode::ExportPicker::default())
         .manage(project::ProjectFiles::default())
+        .manage(presets::Presets::default())
         .invoke_handler(tauri::generate_handler![
             app_info,
             import::import_pick,
@@ -88,6 +90,11 @@ fn commands<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> 
             project::project_recovery_save,
             project::project_recovery_clear,
             project::project_launch_file,
+            presets::presets_library,
+            presets::presets_save,
+            presets::presets_delete,
+            presets::presets_export,
+            presets::presets_import,
             text::text_fonts,
             text::text_layout,
         ])
@@ -1256,6 +1263,88 @@ EOF
                 .starts_with("Connection lost"),
             "{state}"
         );
+    }
+
+    #[test]
+    fn presets_save_update_persist_and_export_then_import_round_trips() {
+        use tauri::Manager;
+
+        let (app, window) = main_window();
+        let dir = std::env::temp_dir().join(format!("bf-ipc-presets-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let state = app.state::<presets::Presets>();
+        state.use_dir(dir.join("presets"));
+
+        let profile = json!("serial-com3");
+        let starters = call(&window, "presets_library", json!({ "profile": profile })).unwrap();
+        assert_eq!(starters["kind"], "beam-forge-material-library");
+        assert!(starters["presets"][0]["starter"].as_bool().unwrap());
+        let count = starters["presets"].as_array().unwrap().len();
+
+        let walnut = json!({
+            "id": "", "material": "Walnut", "thickness": 6.0, "starter": false, "notes": "",
+            "settings": { "operation": "cut", "speed": 150.0, "maxPower": 100.0,
+                          "minPower": 10.0, "passes": 3, "airAssist": true }
+        });
+        let saved = call(
+            &window,
+            "presets_save",
+            json!({ "profile": profile, "preset": walnut }),
+        )
+        .unwrap_or_else(|error| panic!("{error}"));
+        let mut preset = saved["preset"].clone();
+        assert!(preset["id"].as_str().unwrap().starts_with("preset-"));
+        preset["settings"]["speed"] = json!(120.0);
+        call(
+            &window,
+            "presets_save",
+            json!({ "profile": profile, "preset": preset }),
+        )
+        .unwrap();
+        let library = call(&window, "presets_library", json!({ "profile": profile })).unwrap();
+        assert_eq!(library["presets"].as_array().unwrap().len(), count + 1);
+        assert_eq!(library["presets"][count], preset);
+        assert!(dir.join("presets").join("serial-com3.json").exists());
+
+        preset["settings"]["passes"] = json!(0);
+        let invalid = call(
+            &window,
+            "presets_save",
+            json!({ "profile": profile, "preset": preset }),
+        );
+        assert!(
+            invalid.unwrap_err().as_str().unwrap().contains("no passes"),
+            "invalid presets are refused"
+        );
+
+        let file = dir.join("Phecda presets.json");
+        state.pick(file.clone());
+        let exported = call(
+            &window,
+            "presets_export",
+            json!({ "profile": profile, "name": "Phecda presets" }),
+        )
+        .unwrap();
+        assert_eq!(exported, json!(file.display().to_string()));
+
+        state.pick(file.clone());
+        let imported = call(&window, "presets_import", json!({ "profile": null })).unwrap();
+        assert_eq!(imported["library"], library);
+        assert_eq!(imported["added"], 1);
+        assert_eq!(imported["replaced"], count);
+        assert_eq!(
+            call(&window, "presets_library", json!({ "profile": null })).unwrap(),
+            library
+        );
+
+        let deleted = call(
+            &window,
+            "presets_delete",
+            json!({ "profile": null, "id": preset["id"] }),
+        )
+        .unwrap();
+        assert_eq!(deleted, starters);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
