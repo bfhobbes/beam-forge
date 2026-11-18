@@ -220,4 +220,19 @@ describe("select tool snapping", () => {
     expect(transformOf("a")).toEqual(translate(195, 0));
     release();
   });
+
+  it("snaps a moved box to an equal spacing and shows the gaps", () => {
+    const { editor, tool, press, drag, release, transformOf } = setup(SNAP);
+    editor.execute(insert([rect("c", translate(100, 0))]));
+    press(0, 195);
+    // a at 74.6–84.6 sits 0.4 mm short of midway between b (ends at 60) and c (starts at 100).
+    drag(149.2, 195);
+    expect(transformOf("a")).toEqual(translate(75, 0));
+    expect(tool.gaps).toEqual([
+      { axis: "x", from: 60, to: 75, at: 2.5 },
+      { axis: "x", from: 85, to: 100, at: 2.5 },
+    ]);
+    release();
+    expect(tool.gaps).toEqual([]);
+  });
 });

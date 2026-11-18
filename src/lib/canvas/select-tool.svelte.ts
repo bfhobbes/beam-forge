@@ -4,7 +4,8 @@
  * drag is one undo step: every update executes with the gesture's coalesce
  * key, rebuilt from the document as it was when the drag began. Moves and
  * resizes snap to other objects, the bed and the grid unless snapping is off
- * or ctrl is held; `guides` shows what they snapped to.
+ * or ctrl is held; `guides` shows what they snapped to. Moves also snap to
+ * equal spacing with neighbouring objects, shown by `gaps`.
  */
 import { DocumentError } from "#lib/document/commands.js";
 import type { DocumentEditor } from "#lib/document/editor.svelte.js";
@@ -29,6 +30,8 @@ import {
   snapBox,
   snapPoint,
   snapSettings,
+  spacingGaps,
+  type Gap,
   type Guide,
   type SnapOptions,
   type SnapTargets,
@@ -88,6 +91,8 @@ export class SelectTool {
   marquee = $state.raw<{ from: Point; to: Point; mode: MarqueeMode } | null>(null);
   /** Alignment guides for the drag under way, in world mm. */
   guides = $state.raw<Guide[]>([]);
+  /** Equal-spacing hints for the move under way, in world mm. */
+  gaps = $state.raw<Gap[]>([]);
   #press = $state.raw<Press | null>(null);
   #editor: DocumentEditor;
   #selection: Selection;
@@ -180,6 +185,7 @@ export class SelectTool {
     this.#press = null;
     this.marquee = null;
     this.guides = [];
+    this.gaps = [];
     if (press.gesture === "marquee") {
       if (press.dragging) {
         const ids = marqueeSelect(scene, this.#worldBox(press, view), this.#mode(press));
@@ -277,10 +283,10 @@ export class SelectTool {
       }
     }
     const by = dragTransform(gesture, bounds, press.startWorld, to, press.last);
-    this.guides =
-      snap && gesture.kind !== "rotate"
-        ? boxGuides(snap.targets(), transformBounds(bounds, by))
-        : [];
+    const result = snap && gesture.kind !== "rotate" ? transformBounds(bounds, by) : null;
+    this.guides = snap && result ? boxGuides(snap.targets(), result) : [];
+    this.gaps =
+      snap && result && gesture.kind === "move" ? spacingGaps(snap.targets(), result) : [];
     try {
       this.#editor.execute(transformObjects(press.doc, press.ids, by), {
         coalesce: press.coalesce,
@@ -290,6 +296,7 @@ export class SelectTool {
       if (!(error instanceof DocumentError)) throw error;
       this.#press = null;
       this.guides = [];
+      this.gaps = [];
       this.#editor.endCoalesce();
     }
   }

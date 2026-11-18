@@ -1,14 +1,17 @@
 /**
  * Snapping maths for dragging on the canvas, Figma-style: a moving box (or
  * point) is pulled onto the edges and centres of other objects and of the
- * bed, falling back to the grid. Alignment targets draw guide lines; the
- * grid doesn't. Pure, so it tests without a canvas.
+ * bed, or to an equal spacing with its neighbours, falling back to the grid.
+ * Alignment targets draw guide lines and spacing draws gap hints; the grid
+ * draws nothing. Pure, so it tests without a canvas.
  *
- * Targets are built once per drag from the objects in view and kept sorted,
- * so each pointer move is a binary search rather than a scan of the scene.
+ * Targets are built once per drag from the objects in view: lines kept
+ * sorted and boxes in an R-tree, so each pointer move is a binary search and
+ * a query of the moving box's row rather than a scan of the scene.
  */
+import RBush from "rbush";
 import type { Point } from "#lib/document/model.js";
-import type { Scene } from "./scene.js";
+import { unionBounds, type Scene } from "./scene.js";
 import { GRID_MIN_PX, gridSteps, type Bounds } from "./view.js";
 
 /** How close something must come to snap, in CSS px. */
@@ -27,10 +30,14 @@ export interface SnapLine {
   to: number;
 }
 
-/** Snap lines per axis, each sorted by `at`. */
+/** Snap lines per axis, each sorted by `at`, and the objects' boxes for spacing. */
 export interface SnapTargets {
   x: readonly SnapLine[];
   y: readonly SnapLine[];
+  /** Other objects' boxes (not the bed's). */
+  boxes: RBush<Bounds>;
+  /** All of `boxes`, or null for none. */
+  extent: Bounds | null;
 }
 
 /** How a drag snaps right now. */
@@ -49,7 +56,16 @@ export interface Guide {
   to: number;
 }
 
-export const NO_TARGETS: SnapTargets = { x: [], y: [] };
+/**
+ * An equal-spacing hint: a gap along `axis` from `from` to `to`, drawn at
+ * `at` on the other axis; world mm.
+ */
+export interface Gap {
+  axis: "x" | "y";
+  from: number;
+  to: number;
+  at: number;
+}
 
 /** Lines along one axis of a box: its two edges and its centre. */
 function boxLines(box: Bounds, axis: "x" | "y"): SnapLine[] {
@@ -68,10 +84,16 @@ export function snapTargets(boxes: Iterable<Bounds>, bed: Bounds | null): SnapTa
     x.push(...boxLines(box, "x"));
     y.push(...boxLines(box, "y"));
   };
-  for (const box of boxes) add(box);
+  const list = [...boxes];
+  for (const box of list) add(box);
   if (bed) add(bed);
   const byAt = (a: SnapLine, b: SnapLine) => a.at - b.at;
-  return { x: x.sort(byAt), y: y.sort(byAt) };
+  return {
+    x: x.sort(byAt),
+    y: y.sort(byAt),
+    boxes: new RBush<Bounds>().load(list),
+    extent: unionBounds(list),
+  };
 }
 
 /** Index of the first line at or after `value`. */
@@ -99,20 +121,23 @@ function nearest(lines: readonly SnapLine[], value: number, reach: number): Snap
 }
 
 /**
- * The shift along one axis that lands one of `anchors` on a target line, or
- * failing that one of `gridAnchors` on the grid; 0 when nothing is in reach.
+ * The shift along one axis that lands one of `anchors` on a target line (or
+ * is one of the `extra` shifts, such as to an equal spacing), or failing
+ * that one of `gridAnchors` on the grid; 0 when nothing is in reach.
  */
 export function snapAxis(
   lines: readonly SnapLine[],
   anchors: readonly number[],
   gridAnchors: readonly number[],
   settings: SnapSettings,
+  extra: readonly number[] = [],
 ): number {
   let best: number | null = null;
   const consider = (shift: number) => {
     if (Math.abs(shift) <= settings.reach && (best === null || Math.abs(shift) < Math.abs(best)))
       best = shift;
   };
+  for (const shift of extra) consider(shift);
   for (const anchor of anchors) {
     const line = nearest(lines, anchor, settings.reach);
     if (line) consider(line.at - anchor);
@@ -128,13 +153,103 @@ export function snapAxis(
 const span = (box: Bounds, axis: "x" | "y"): [number, number] =>
   axis === "x" ? [box.minX, box.maxX] : [box.minY, box.maxY];
 
-/** The shift that snaps a box being moved: any edge or its centre onto a target, else an edge onto the grid. */
+const other = (axis: "x" | "y") => (axis === "x" ? "y" : "x");
+
+type Spacing = { start: number; pairs: [Bounds | null, Bounds | null][] };
+
+/**
+ * Where a box of this size could start along `axis` to space itself evenly
+ * from its neighbours in the same row (column for "y"): midway between the
+ * nearest one each side, or one gap on from a pair of neighbours on one
+ * side. Each comes with the pairs of boxes whose gaps match, `null`
+ * standing for the box itself.
+ */
+function spacings(targets: SnapTargets, box: Bounds, axis: "x" | "y"): Spacing[] {
+  const { extent } = targets;
+  if (!extent) return [];
+  const [min, max] = span(box, axis);
+  const [crossMin, crossMax] = span(box, other(axis));
+  const row = targets.boxes.search(
+    axis === "x"
+      ? { minX: extent.minX, maxX: extent.maxX, minY: crossMin, maxY: crossMax }
+      : { minX: crossMin, maxX: crossMax, minY: extent.minY, maxY: extent.maxY },
+  );
+  const lo = (b: Bounds) => span(b, axis)[0];
+  const hi = (b: Bounds) => span(b, axis)[1];
+  // Neighbours wholly before or after the box, nearest first.
+  const before = row.filter((b) => hi(b) <= min).sort((a, b) => hi(b) - hi(a));
+  const after = row.filter((b) => lo(b) >= max).sort((a, b) => lo(a) - lo(b));
+  const size = max - min;
+  const options: Spacing[] = [];
+  const left = before.at(0);
+  const right = after.at(0);
+  if (left && right) {
+    options.push({
+      start: (hi(left) + lo(right) - size) / 2,
+      pairs: [
+        [left, null],
+        [null, right],
+      ],
+    });
+  }
+  // The next neighbour out must clear the nearest one along the axis.
+  const outer = left && before.find((b) => hi(b) <= lo(left));
+  if (left && outer) {
+    options.push({
+      start: hi(left) + lo(left) - hi(outer),
+      pairs: [
+        [outer, left],
+        [left, null],
+      ],
+    });
+  }
+  const beyond = right && after.find((b) => lo(b) >= hi(right));
+  if (right && beyond) {
+    options.push({
+      start: lo(right) - (lo(beyond) - hi(right)) - size,
+      pairs: [
+        [null, right],
+        [right, beyond],
+      ],
+    });
+  }
+  return options;
+}
+
+/**
+ * The shift that snaps a box being moved: any edge or its centre onto a
+ * target, or to an equal spacing with its neighbours, else an edge onto the
+ * grid.
+ */
 export function snapBox(targets: SnapTargets, box: Bounds, settings: SnapSettings): Point {
   const shift = (axis: "x" | "y") => {
     const [min, max] = span(box, axis);
-    return snapAxis(targets[axis], [min, (min + max) / 2, max], [min, max], settings);
+    const even = spacings(targets, box, axis).map((option) => option.start - min);
+    return snapAxis(targets[axis], [min, (min + max) / 2, max], [min, max], settings, even);
   };
   return { x: shift("x"), y: shift("y") };
+}
+
+/** Gap hints for a box that sits at an equal spacing with its neighbours. */
+export function spacingGaps(targets: SnapTargets, box: Bounds): Gap[] {
+  const gaps: Gap[] = [];
+  for (const axis of ["x", "y"] as const) {
+    const [min] = span(box, axis);
+    const option = spacings(targets, box, axis).find(
+      (candidate) => Math.abs(candidate.start - min) <= SAME * Math.max(1, Math.abs(min)),
+    );
+    if (!option) continue;
+    for (const [a, b] of option.pairs) {
+      const first = a ?? box;
+      const second = b ?? box;
+      // Drawn across the middle of where the two boxes overlap.
+      const [aMin, aMax] = span(first, other(axis));
+      const [bMin, bMax] = span(second, other(axis));
+      const at = (Math.max(aMin, bMin) + Math.min(aMax, bMax)) / 2;
+      gaps.push({ axis, from: span(first, axis)[1], to: span(second, axis)[0], at });
+    }
+  }
+  return gaps;
 }
 
 /**
