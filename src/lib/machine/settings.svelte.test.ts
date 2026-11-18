@@ -41,6 +41,7 @@ function profile(changes: Partial<MachineProfile> = {}): MachineProfile {
     airAssist: "M8",
     userOrigin: null,
     framePower: 0,
+    setup: null,
     ...changes,
   };
 }

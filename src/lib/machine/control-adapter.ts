@@ -17,6 +17,8 @@ export interface ControlAdapter {
   command(command: MachineCommand, profile: MachineProfile | null): Promise<void>;
   /** Fires the laser, capped in Rust at 10% for 1 s. Returns what fired. */
   testFire(fire: TestFire, profile: MachineProfile | null): Promise<TestFire>;
+  /** Runs the homing cycle and resolves once it has finished; rejects with why it failed. */
+  testHome(): Promise<void>;
 }
 
 export const desktopControl: ControlAdapter = {
@@ -25,6 +27,7 @@ export const desktopControl: ControlAdapter = {
   jogStop: () => invoke<void>("machine_jog_stop"),
   command: (command, profile) => invoke<void>("machine_command", { command, profile }),
   testFire: (fire, profile) => invoke<TestFire>("machine_test_fire", { fire, profile }),
+  testHome: () => invoke<void>("machine_test_home"),
 };
 
 const unavailable = async (): Promise<never> => {
@@ -38,6 +41,7 @@ export const previewControl: ControlAdapter = {
   jogStop: async () => {},
   command: unavailable,
   testFire: unavailable,
+  testHome: unavailable,
 };
 
 export const controlAdapter = desktop ? desktopControl : previewControl;

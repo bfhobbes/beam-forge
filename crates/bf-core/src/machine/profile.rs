@@ -3,6 +3,7 @@
 //! `machines/<id>.json` in the app data directory, and refreshed from `$$`
 //! every time Beam Forge connects.
 
+use std::collections::BTreeMap;
 use std::fmt;
 use std::fs;
 use std::io;
@@ -27,6 +28,43 @@ pub enum OriginCorner {
     FrontRight,
     RearLeft,
     RearRight,
+}
+
+/// A step of the "Set up this machine" checklist. The hands-on tests
+/// (`JogTest`, `FrameTest`, `FireTest`) make up one checklist step.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum SetupStep {
+    Connected,
+    Bed,
+    LaserMode,
+    Homing,
+    JogTest,
+    FrameTest,
+    FireTest,
+    AirAssist,
+}
+
+/// How a setup step ended. A step without one is still to do.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum StepOutcome {
+    Done,
+    Skipped,
+}
+
+/// Progress through the "Set up this machine" checklist, kept with the
+/// profile so it resumes where it was left.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+#[ts(export)]
+pub struct MachineSetup {
+    /// The steps finished or skipped so far.
+    pub steps: BTreeMap<SetupStep, StepOutcome>,
+    /// Closed by the user: not offered again on connect.
+    pub dismissed: bool,
 }
 
 /// Width (X) and depth (Y) of the work area, in mm.
@@ -86,6 +124,9 @@ pub struct MachineProfile {
     /// Low-power frame: percent of full power to frame at (`M4`), up to
     /// [`MAX_FRAME_POWER`]. 0 frames with the laser off.
     pub frame_power: f64,
+    /// The setup checklist's progress. `None` on profiles made before the
+    /// checklist existed, which aren't offered it on connect.
+    pub setup: Option<MachineSetup>,
 }
 
 impl Default for MachineProfile {
@@ -120,6 +161,7 @@ impl Default for MachineProfile {
             air_assist: "M8".to_string(),
             user_origin: None,
             frame_power: 0.0,
+            setup: None,
         }
     }
 }
@@ -162,13 +204,15 @@ pub(crate) fn valid_id(id: &str) -> bool {
 }
 
 impl MachineProfile {
-    /// A new profile for the machine that answered on `port`.
+    /// A new profile for the machine that answered on `port`, with the
+    /// setup checklist still to do, so the app offers it.
     pub fn new(port: &PortInfo, machine: &MachineInfo) -> Self {
         MachineProfile {
             id: profile_id(port),
             name: format!("{} on {}", machine.name, port.label),
             firmware: machine.firmware,
             port_key: Some(port.key.clone()),
+            setup: Some(MachineSetup::default()),
             ..MachineProfile::default()
         }
     }
@@ -516,7 +560,40 @@ mod tests {
 
         let profile = store.load("old").unwrap();
         assert!(profile.laser_mode);
+        assert_eq!(profile.setup, None, "made before the setup checklist");
         assert_eq!(profile.air_assist, "M8");
         assert_eq!(profile.junction_deviation, 0.01, "GRBL's default $11");
+    }
+
+    #[test]
+    fn a_new_machine_gets_the_setup_checklist_and_keeps_its_progress() {
+        let store = temp_store();
+        let mut profile = store.sync(&com3(), &grbl(), &report(&["$32=0"])).unwrap();
+        assert_eq!(profile.setup, Some(MachineSetup::default()), "offered");
+
+        let mut setup = MachineSetup::default();
+        setup.steps.insert(SetupStep::Connected, StepOutcome::Done);
+        setup.steps.insert(SetupStep::Homing, StepOutcome::Skipped);
+        profile.setup = Some(setup.clone());
+        store.save(&profile).unwrap();
+        let json = fs::read_to_string(store.dir().join("serial-com3.json")).unwrap();
+        assert!(
+            json.contains(r#""steps": {"#) && json.contains(r#""homing": "skipped""#),
+            "{json}"
+        );
+
+        let reconnected = store.sync(&com3(), &grbl(), &report(&["$32=1"])).unwrap();
+        assert_eq!(reconnected.setup, Some(setup), "progress resumes");
+    }
+
+    #[test]
+    fn profiles_from_before_the_checklist_are_not_offered_it() {
+        let store = temp_store();
+        let mut old = MachineProfile::new(&com3(), &grbl());
+        old.setup = None;
+        store.save(&old).unwrap();
+
+        let profile = store.sync(&com3(), &grbl(), &report(&["$32=1"])).unwrap();
+        assert_eq!(profile.setup, None);
     }
 }

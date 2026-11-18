@@ -91,6 +91,8 @@ export class MachineControl {
   /** The held jog's direction while one runs. */
   holding = $state<JogDirection | null>(null);
   firing = $state(false);
+  /** A test home is running. */
+  homing = $state(false);
   /** The last failed command, until the next one. */
   error = $state("");
 
@@ -133,9 +135,9 @@ export class MachineControl {
     return this.#machine.connected ? this.#machine.status?.state.name : undefined;
   }
 
-  /** Connected, no job running and the laser not test firing. */
+  /** Connected, no job running, the laser not test firing and no test home running. */
   get #free(): boolean {
-    return this.#machine.connected && !this.#job.active && !this.firing;
+    return this.#machine.connected && !this.#job.active && !this.firing && !this.homing;
   }
 
   /** Idle and free: ready to set the origin, test fire or go to the origin. */
@@ -170,9 +172,9 @@ export class MachineControl {
 
   // ---- jogging ----
 
-  /** Jogs one step. */
-  async jog({ x, y }: JogDirection): Promise<void> {
-    await this.#run(() => this.#adapter.jog({ x, y }, this.step, this.feed));
+  /** Jogs one step, or `distance` mm. Returns whether the jog was sent. */
+  async jog({ x, y }: JogDirection, distance: number = this.step): Promise<boolean> {
+    return this.#run(() => this.#adapter.jog({ x, y }, distance, this.feed));
   }
 
   /**
@@ -276,6 +278,26 @@ export class MachineControl {
     return this.command({ command: "goToOrigin", feed: this.feed });
   }
 
+  /** Air assist on or off. Returns whether the command was sent. */
+  setAirAssist(on: boolean): Promise<boolean> {
+    return this.#run(() =>
+      this.#adapter.command({ command: "airAssist", on }, this.#settings.profile),
+    );
+  }
+
+  /**
+   * Homes and waits for the cycle to finish, for the setup checklist.
+   * Returns whether it homed; `error` says why not.
+   */
+  async testHome(): Promise<boolean> {
+    this.homing = true;
+    try {
+      return await this.#run(() => this.#adapter.testHome());
+    } finally {
+      this.homing = false;
+    }
+  }
+
   toggleAirAssist(): Promise<void> {
     return this.command({ command: "airAssist", on: !this.airAssist });
   }
@@ -284,8 +306,8 @@ export class MachineControl {
    * Fires the laser. Rust turns it off after the duration; the app stays
    * busy (no close, no update) until then.
    */
-  async testFire(): Promise<void> {
-    if (this.firing) return;
+  async testFire(): Promise<boolean> {
+    if (this.firing) return false;
     this.firing = true;
     const release = this.#lifecycle.beginBusy(FIRING_REASON);
     const done = () => {
@@ -295,10 +317,11 @@ export class MachineControl {
     const fire = { power: this.power, durationMs: this.durationMs };
     if (!(await this.#run(() => this.#adapter.testFire(fire, this.#settings.profile)))) {
       done();
-      return;
+      return false;
     }
     // Rust's clamp may have shortened it; the UI's own caps match.
     setTimeout(done, Math.min(fire.durationMs, TEST_FIRE_MAX_MS));
+    return true;
   }
 
   async #run(command: () => Promise<unknown>): Promise<boolean> {

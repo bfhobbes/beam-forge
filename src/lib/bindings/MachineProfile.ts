@@ -2,6 +2,7 @@
 import type { AxisValues } from "./AxisValues";
 import type { BedSize } from "./BedSize";
 import type { Firmware } from "./Firmware";
+import type { MachineSetup } from "./MachineSetup";
 import type { OriginCorner } from "./OriginCorner";
 import type { Point } from "./project/Point";
 
@@ -65,4 +66,9 @@ userOrigin: Point | null,
  * Low-power frame: percent of full power to frame at (`M4`), up to
  * [`MAX_FRAME_POWER`]. 0 frames with the laser off.
  */
-framePower: number, };
+framePower: number, 
+/**
+ * The setup checklist's progress. `None` on profiles made before the
+ * checklist existed, which aren't offered it on connect.
+ */
+setup: MachineSetup | null, };

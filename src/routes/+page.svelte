@@ -28,6 +28,8 @@
   import { machineConsole } from "#lib/machine/console.svelte.js";
   import JobPanel from "#lib/machine/JobPanel.svelte";
   import JogPad from "#lib/machine/JogPad.svelte";
+  import SetupChecklist from "#lib/machine/SetupChecklist.svelte";
+  import { machineSetup } from "#lib/machine/setup.svelte.js";
   import { startJob } from "#lib/machine/job-actions.js";
   import { machineJob } from "#lib/machine/job.svelte.js";
   import { toolpathPreview } from "#lib/toolpath/preview.svelte.js";
@@ -35,6 +37,7 @@
   // Canvas | inspector, as percentages of the window width.
   const layout = panelLayout("main", [76, 24]);
   let tool = $state<ToolId>("select");
+  let inspectorTab = $state("properties");
   let cursor = $state<{ x: number; y: number } | null>(null);
   // Where the pointer last was over the canvas: "Paste" from the palette lands there.
   let lastCursor: { x: number; y: number } | null = null;
@@ -60,8 +63,27 @@
       ...editActions(editor, selection, { pasteTarget: () => lastCursor }),
       // The active machine profile's bed, as the canvas draws it.
       ...arrangeActions(editor, selection, () => machineSettings.bed),
+      {
+        id: "machine.setup",
+        title: "Set up this machine…",
+        group: "Machine",
+        keywords: ["setup", "wizard", "checklist", "first run", "calibrate", "profile"],
+        enabled: () => machineSetup.available,
+        hint: "Connect to a machine first",
+        run: () => {
+          inspectorTab = "machine";
+          void machineSetup.reopen();
+        },
+      },
     ),
   );
+  // Offers the setup checklist the first time a machine without a profile connects.
+  $effect(() => {
+    const state = connection.state;
+    const port = state.status === "connected" ? state.port.key : null;
+    const profile = machineSettings.profile;
+    untrack(() => machineSetup.follow(port, profile));
+  });
 
   // A running design follows the head's reported position...
   $effect(() => {
@@ -91,9 +113,10 @@
         </Resizable.Pane>
         <Resizable.Handle />
         <Resizable.Pane defaultSize={layout.sizes[1]} minSize={16} maxSize={45}>
-          <Inspector>
+          <Inspector bind:tab={inspectorTab}>
             {#snippet machine()}
               <ConnectionPanel />
+              <SetupChecklist />
               <JobPanel />
               <JogPad />
               <MachineConsole />

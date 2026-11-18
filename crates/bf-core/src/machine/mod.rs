@@ -43,7 +43,8 @@ pub use preflight::{
 };
 pub(crate) use profile::valid_id;
 pub use profile::{
-    AxisValues, BedSize, MachineProfile, OriginCorner, ProfileError, ProfileStore, profile_id,
+    AxisValues, BedSize, MachineProfile, MachineSetup, OriginCorner, ProfileError, ProfileStore,
+    SetupStep, StepOutcome, profile_id,
 };
 pub use reply::{Reply, ReplyCode, alarm_text, decode_reply, error_text};
 pub use settings::{

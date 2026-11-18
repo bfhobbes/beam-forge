@@ -4,9 +4,11 @@
   import LayersPanel from "./LayersPanel.svelte";
   import SelectionProperties from "./SelectionProperties.svelte";
 
-  /** `machine` fills the Machine tab: the connection panel and machine controls. */
-  let { machine }: { machine: Snippet } = $props();
-  let tab = $state("properties");
+  /**
+   * `machine` fills the Machine tab: the connection panel and machine
+   * controls. `tab` is the open tab, bindable so actions can switch to one.
+   */
+  let { machine, tab = $bindable("properties") }: { machine: Snippet; tab?: string } = $props();
 </script>
 
 <aside aria-label="Inspector" class="flex h-full flex-col bg-background">
