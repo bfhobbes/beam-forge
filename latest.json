@@ -1,31 +1,31 @@
 {
-  "version": "0.2.1",
-  "notes": "## What's Changed\n* Give Beam Forge a laser-beam app icon by @bfhobbes in https://github.com/bfhobbes/beam-forge/pull/19\n* App icon, real-laser safety gate, and public-repo prep by @bfhobbes in https://github.com/bfhobbes/beam-forge/pull/20\n\n## New Contributors\n* @bfhobbes made their first contribution in https://github.com/bfhobbes/beam-forge/pull/19\n\n**Full Changelog**: https://github.com/bfhobbes/beam-forge/commits/v0.2.1",
-  "pub_date": "2026-11-17T21:34:24Z",
+  "version": "0.2.2",
+  "notes": "## What's Changed\n* Simulator link tests use socket read timeouts (Windows os error 997) by @bfhobbes in https://github.com/bfhobbes/beam-forge/pull/24\n* Selection survives opening a project by @bfhobbes in https://github.com/bfhobbes/beam-forge/pull/21\n* bf-sim: safety door turns the laser and air assist off by @bfhobbes in https://github.com/bfhobbes/beam-forge/pull/23\n* Job time estimate from machine acceleration by @bfhobbes in https://github.com/bfhobbes/beam-forge/pull/25\n* Release 0.2.2 by @bfhobbes in https://github.com/bfhobbes/beam-forge/pull/26\n\n\n**Full Changelog**: https://github.com/bfhobbes/beam-forge/compare/v0.2.1...v0.2.2",
+  "pub_date": "2026-11-18T00:05:30Z",
   "platforms": {
     "windows-x86_64-nsis": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSNVpKM3RETStpbGpkTjZFWmpSaGZjallVNzBMLzh4bVIrYllQakxqTkVTRnNVcUh5cE9MbFo0L0JoTEpMU0hJbG1qOWZSMU13cnFjWmxCYTR5NDdXQWgwZ1dyNEpzMlFBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0OTUxMjAyCWZpbGU6QmVhbSBGb3JnZV8wLjIuMV94NjQtc2V0dXAuZXhlCXZlcnNpb246MC4yLjEKL0lRR3o2Yi8zdkpoTFQvMDZyZCt0c3BBbytBeVZwWDBWQmp4a3Q2NHJEOGdpTzhITUYyRXVCU21oTmRGNzdLeHcwdXk4ak11VWVDUURPZjN1a0kzRHc9PQo=",
-      "url": "https://github.com/bfhobbes/beam-forge/releases/download/v0.2.1/Beam.Forge_0.2.1_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSNVpKM3RETStpbHAwbVBNb3d1QmgySHpKN0Y3b3JlNGsxYjZVbUZqSWIvWjArTTZ4OXhKeWtBaHJrZGZ0RjBxUnZvVXhjUTdJbi92RVVjRTdUWlU3WGpKbEV0K2pqR0FnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0OTYwMjU5CWZpbGU6QmVhbSBGb3JnZV8wLjIuMl94NjQtc2V0dXAuZXhlCXZlcnNpb246MC4yLjIKVUx5ZDVWb0s1WE4zRzZJTHFpL0N6QXpjSC9OSnQ3QVJMQlMzK2xmcWd1VU10T09OQlV4TjZPYlYvUndkV2RDTnZmeCtsRkxkc2s4NERZczMzVll0QXc9PQo=",
+      "url": "https://github.com/bfhobbes/beam-forge/releases/download/v0.2.2/Beam.Forge_0.2.2_x64-setup.exe"
     },
     "windows-x86_64-msi": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSNVpKM3RETStpbGdXV3d2bVJoRU8zQy9ZTWxVajlacWp4NDI1N0ZBSDhtQUd4WkNjMjZLcVlrTmtCUmFNSGkrYm0yUHhwbW5HNU9HaGF6bXJ0akxZb1A5VEl4TWUrN2c4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0OTUxMjAyCWZpbGU6QmVhbSBGb3JnZV8wLjIuMV94NjRfZW4tVVMubXNpCXZlcnNpb246MC4yLjEKSVhXS1ZYTTY3aTdpc2pZYmt0WEVwNitwRFlWVDVZZzRoU2Q3YWVSQSthb21uMXlrdklIRXB2d050VlJDYkNXUVJWTy9WTkVlTGtWeDFXTG1UTnR4RFE9PQo=",
-      "url": "https://github.com/bfhobbes/beam-forge/releases/download/v0.2.1/Beam.Forge_0.2.1_x64_en-US.msi"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSNVpKM3RETStpbG5PYjA5MzN5SzYzU0hockdkcGhRWkNIVWp2djU1NzdnVDVDWlNzQ3QyZThqSkpSVGV2S2prSzBuSnNWZDFSUkpPQkg2aUtScGdtZklJQ2RHNDRVYlFVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0OTYwMjU5CWZpbGU6QmVhbSBGb3JnZV8wLjIuMl94NjRfZW4tVVMubXNpCXZlcnNpb246MC4yLjIKRUFabTJjYjRTTEpRSkJKNHFZSWZjbVJYUEpEcFJyL2Y5QU93ZDNqa2Z2SVpMVGtpdnVnTUFhY2hRSXBXZUZHeUNtYkxobU00Yy9hblYya1Q3SW9RQnc9PQo=",
+      "url": "https://github.com/bfhobbes/beam-forge/releases/download/v0.2.2/Beam.Forge_0.2.2_x64_en-US.msi"
     },
     "linux-x86_64-appimage": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSNVpKM3RETStpbHFwYlIvalIwN0x5NXdRRFhEejk4U3hNWnY4RHBwMWJoamJpcTdQaktUWkVOVnczZFZXYy9KWkQ4MTI2Q1VWYnBXKzBLRTV6MXpCVFZ5VGtEam9uTEE0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0OTUwODMyCWZpbGU6QmVhbSBGb3JnZV8wLjIuMV9hbWQ2NC5BcHBJbWFnZQl2ZXJzaW9uOjAuMi4xCjYwbnJxQ3lYSEJqRUFUQXFZcU5CbmFuN3o0VXZqNitHTTdzTFEzN0JzWjYzcnIxdEk3cmxXa3N3bmZMTUlieXBqTUlucW1DV0VVVFM5eHNpYmRzYkJnPT0K",
-      "url": "https://github.com/bfhobbes/beam-forge/releases/download/v0.2.1/Beam.Forge_0.2.1_amd64.AppImage"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSNVpKM3RETStpbGpOVWdkcDl6S09YZ0RlQVNQU2xEME9qWkFDUWFocmdZdmFwbisvSk51SENVcXBnMm0wZW5nZnpVWFo1L0FRQ3FEdGdWUzhpYVkyek1OU3JUc3JJS1FjPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0OTYwMDg3CWZpbGU6QmVhbSBGb3JnZV8wLjIuMl9hbWQ2NC5BcHBJbWFnZQl2ZXJzaW9uOjAuMi4yCkx5d0pDUEVXMjZHWGNUWXNlNkFINXo5c1VuS1ZDbndUZms1aFRKUW4yRFNlWmlNc0xIVi9uRzNncmN0VEdpcFpMSlcrVlJ0WHprbjBFUFk3WG1DUUN3PT0K",
+      "url": "https://github.com/bfhobbes/beam-forge/releases/download/v0.2.2/Beam.Forge_0.2.2_amd64.AppImage"
     },
     "linux-x86_64-deb": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSNVpKM3RETStpbG1CcFM3dVh4WlVLaDN6bXE2RkQzak9hQTNOT1NmQ0RuNndxS1lDRlEzelhNWkExK3owOUZlY01lUm9VcGgzSURIcW01WlpCUHM5cWFLVTR5ZWFGNFFvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0OTUwODMyCWZpbGU6QmVhbSBGb3JnZV8wLjIuMV9hbWQ2NC5kZWIJdmVyc2lvbjowLjIuMQpORDJsNCtiNi9mV0xiWlhhMEtjSUhyRlRPU2hqTE5xMzlTdFBPSWVpbU01STRYUTE3T1lHOWl1akQyUHQwWWVRTnZWRkR0L0tzM1VoT1I3dTNQVnhBUT09Cg==",
-      "url": "https://github.com/bfhobbes/beam-forge/releases/download/v0.2.1/Beam.Forge_0.2.1_amd64.deb"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSNVpKM3RETStpbGllSm5CNEFwZjlMdFlwSnZGcHN3YlJFUEFHSnRPWTdjM201MDR5djlQWVpldGF4V3ZyQ1NkRW9GMUpBVzN0d3F3ZG5QWXhDVkRUVnBKODBsMFdsWmdrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0OTYwMDg3CWZpbGU6QmVhbSBGb3JnZV8wLjIuMl9hbWQ2NC5kZWIJdmVyc2lvbjowLjIuMgplczh2ek5sZ1Qzb3A1STJVcWRKY2wxNTJoWXVkNWlJS255WG1yTGU2MlQzSUd3RG56ZjhRQU1zSlZQZ0xtdGI0endEbWNYdmxTQ2ErcnptR1JaMFVCUT09Cg==",
+      "url": "https://github.com/bfhobbes/beam-forge/releases/download/v0.2.2/Beam.Forge_0.2.2_amd64.deb"
     },
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSNVpKM3RETStpbGpkTjZFWmpSaGZjallVNzBMLzh4bVIrYllQakxqTkVTRnNVcUh5cE9MbFo0L0JoTEpMU0hJbG1qOWZSMU13cnFjWmxCYTR5NDdXQWgwZ1dyNEpzMlFBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0OTUxMjAyCWZpbGU6QmVhbSBGb3JnZV8wLjIuMV94NjQtc2V0dXAuZXhlCXZlcnNpb246MC4yLjEKL0lRR3o2Yi8zdkpoTFQvMDZyZCt0c3BBbytBeVZwWDBWQmp4a3Q2NHJEOGdpTzhITUYyRXVCU21oTmRGNzdLeHcwdXk4ak11VWVDUURPZjN1a0kzRHc9PQo=",
-      "url": "https://github.com/bfhobbes/beam-forge/releases/download/v0.2.1/Beam.Forge_0.2.1_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSNVpKM3RETStpbHAwbVBNb3d1QmgySHpKN0Y3b3JlNGsxYjZVbUZqSWIvWjArTTZ4OXhKeWtBaHJrZGZ0RjBxUnZvVXhjUTdJbi92RVVjRTdUWlU3WGpKbEV0K2pqR0FnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0OTYwMjU5CWZpbGU6QmVhbSBGb3JnZV8wLjIuMl94NjQtc2V0dXAuZXhlCXZlcnNpb246MC4yLjIKVUx5ZDVWb0s1WE4zRzZJTHFpL0N6QXpjSC9OSnQ3QVJMQlMzK2xmcWd1VU10T09OQlV4TjZPYlYvUndkV2RDTnZmeCtsRkxkc2s4NERZczMzVll0QXc9PQo=",
+      "url": "https://github.com/bfhobbes/beam-forge/releases/download/v0.2.2/Beam.Forge_0.2.2_x64-setup.exe"
     },
     "linux-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSNVpKM3RETStpbHFwYlIvalIwN0x5NXdRRFhEejk4U3hNWnY4RHBwMWJoamJpcTdQaktUWkVOVnczZFZXYy9KWkQ4MTI2Q1VWYnBXKzBLRTV6MXpCVFZ5VGtEam9uTEE0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0OTUwODMyCWZpbGU6QmVhbSBGb3JnZV8wLjIuMV9hbWQ2NC5BcHBJbWFnZQl2ZXJzaW9uOjAuMi4xCjYwbnJxQ3lYSEJqRUFUQXFZcU5CbmFuN3o0VXZqNitHTTdzTFEzN0JzWjYzcnIxdEk3cmxXa3N3bmZMTUlieXBqTUlucW1DV0VVVFM5eHNpYmRzYkJnPT0K",
-      "url": "https://github.com/bfhobbes/beam-forge/releases/download/v0.2.1/Beam.Forge_0.2.1_amd64.AppImage"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSNVpKM3RETStpbGpOVWdkcDl6S09YZ0RlQVNQU2xEME9qWkFDUWFocmdZdmFwbisvSk51SENVcXBnMm0wZW5nZnpVWFo1L0FRQ3FEdGdWUzhpYVkyek1OU3JUc3JJS1FjPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0OTYwMDg3CWZpbGU6QmVhbSBGb3JnZV8wLjIuMl9hbWQ2NC5BcHBJbWFnZQl2ZXJzaW9uOjAuMi4yCkx5d0pDUEVXMjZHWGNUWXNlNkFINXo5c1VuS1ZDbndUZms1aFRKUW4yRFNlWmlNc0xIVi9uRzNncmN0VEdpcFpMSlcrVlJ0WHprbjBFUFk3WG1DUUN3PT0K",
+      "url": "https://github.com/bfhobbes/beam-forge/releases/download/v0.2.2/Beam.Forge_0.2.2_amd64.AppImage"
     }
   }
 }
