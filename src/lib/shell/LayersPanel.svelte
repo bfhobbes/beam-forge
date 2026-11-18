@@ -2,6 +2,7 @@
   import EyeIcon from "@lucide/svelte/icons/eye";
   import EyeOffIcon from "@lucide/svelte/icons/eye-off";
   import GripVerticalIcon from "@lucide/svelte/icons/grip-vertical";
+  import TriangleAlertIcon from "@lucide/svelte/icons/triangle-alert";
   import Trash2Icon from "@lucide/svelte/icons/trash-2";
   import ZapIcon from "@lucide/svelte/icons/zap";
   import ZapOffIcon from "@lucide/svelte/icons/zap-off";
@@ -22,7 +23,7 @@
   import { selection } from "#lib/document/selection.svelte.js";
   import PresetPicker from "#lib/presets/PresetPicker.svelte";
   import { presetModified } from "#lib/presets/presets.js";
-  import { clickSwatch, editLayerSetting } from "./layers-panel.js";
+  import { clickSwatch, constantPowerWarning, editLayerSetting } from "./layers-panel.js";
   import NumberField from "./NumberField.svelte";
 
   /**
@@ -310,6 +311,14 @@
 
     {@render toggle(layer, "airAssist", "Air assist")}
     {@render toggle(layer, "constantPower", "Constant power (M3)")}
+    {#if layer.constantPower}
+      <p
+        role="alert"
+        class="flex gap-1.5 rounded-md border border-destructive/50 bg-destructive/10 p-2 text-xs text-destructive"
+      >
+        <TriangleAlertIcon class="mt-0.5 size-3.5 shrink-0" />{constantPowerWarning(layer)}
+      </p>
+    {/if}
 
     {#if layer.mode === "fill"}
       <div class="flex flex-col gap-1.5">
