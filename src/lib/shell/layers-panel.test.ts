@@ -5,7 +5,7 @@ import { DocumentEditor } from "#lib/document/editor.svelte.js";
 import { newLayer } from "#lib/document/layers.js";
 import { emptyDocument, type DesignDocument } from "#lib/document/model.js";
 import { IDENTITY } from "#lib/document/transform.js";
-import { clickSwatch, editLayerSetting } from "./layers-panel.js";
+import { clickSwatch, constantPowerWarning, editLayerSetting } from "./layers-panel.js";
 
 function sample(): DesignDocument {
   return {
@@ -64,5 +64,18 @@ describe("layer setting edits", () => {
     editor.undo();
     expect(editor.doc.layers[0].speed).toBe(1000);
     expect(editor.canUndo).toBe(false);
+  });
+});
+
+describe("constant power warning", () => {
+  it("warns about a dropped connection when the layer is on M3", () => {
+    const warning = constantPowerWarning({ ...newLayer(0), constantPower: true });
+    expect(warning).toContain("If the USB connection drops during this layer");
+    expect(warning).toContain("until the machine is reset or switched off");
+    expect(warning).toContain("Use dynamic power");
+  });
+
+  it("is quiet for dynamic power (M4), the default", () => {
+    expect(constantPowerWarning(newLayer(0))).toBeNull();
   });
 });

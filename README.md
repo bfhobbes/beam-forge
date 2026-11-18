@@ -9,6 +9,9 @@ Status: alpha. Drawing, text, file import, toolpath preview, GCode export and ma
 > [!WARNING]
 > Beam Forge is alpha software and has had little testing on real lasers. It may have bugs that move the head unexpectedly or leave the laser on. Never leave the laser running unattended, and keep a way to cut its power within reach. You use Beam Forge at your own risk; it is provided "as is", without warranty (see [LICENSE](LICENSE)). The app won't connect to a real laser until you turn on **Real laser** and accept a safety notice; the simulators work without it.
 
+> [!CAUTION]
+> **Constant power (M3) layers stay lit if the connection drops.** Layers cut with dynamic power (`M4`) by default: GRBL switches the laser off whenever the head stops. A layer set to **Constant power (M3)** keeps full power through acceleration and corners, but if the USB connection drops during that layer, GRBL runs out what it has buffered and the laser stays on at that power, with the head still, until the controller is reset or switched off. The app can't prevent this in the GCode, so it warns on the layer and in the pre-run checks. Use M3 only when you need full power at corners, stay at the machine while it runs, and fit a hardware emergency stop or a laser-enable interlock that cuts the laser's power independently of the controller.
+
 ## Run
 
 Requires Node 24.11+, npm, stable Rust (1.90+), and the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) (on Windows: MSVC C++ build tools and WebView2).

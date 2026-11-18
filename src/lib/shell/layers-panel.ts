@@ -13,7 +13,7 @@ import {
   LAYER_PALETTE,
   type LayerChanges,
 } from "#lib/document/layers.js";
-import type { DesignDocument } from "#lib/document/model.js";
+import type { CutLayer, DesignDocument } from "#lib/document/model.js";
 
 export interface SwatchClick {
   /** The edit to make, or null when the layer already exists and nothing is selected. */
@@ -65,4 +65,17 @@ export function editLayerSetting(
     if (error instanceof DocumentError) return error.message;
     throw error;
   }
+}
+
+/**
+ * The warning shown under a layer that cuts at constant power (`M3`), or
+ * null for dynamic power (`M4`). If the link drops, GRBL stops wherever its
+ * buffer runs out and, in `M3`, keeps the laser on there.
+ */
+export function constantPowerWarning(layer: Pick<CutLayer, "constantPower">): string | null {
+  return layer.constantPower
+    ? "If the USB connection drops during this layer, the laser stays on at this power until " +
+        "the machine is reset or switched off. Use dynamic power unless you need full power at " +
+        "corners."
+    : null;
 }

@@ -209,6 +209,7 @@ fn air_assist_and_constant_power_snapshot() {
         .map(String::from)
         .collect();
     assert_eq!(commands, ["M4 S0", "M8", "M9", "M3 S0", "M5", "M9"]);
+    assert_eq!(job.summary.constant_power_layers, ["Mark"]);
     // GRBL waits for motion to finish before each change, so the head is
     // at rest before the first move (M4), the second layer (M8) and the
     // third (M9, M3), each a rapid and four cuts in.
@@ -460,6 +461,25 @@ fn summary_counts_command_lines() {
     let job = generate(&doc, &profile(), absolute(), None).unwrap();
     let commands = job.lines().filter(|l| !l.starts_with(';')).count();
     assert_eq!(job.summary.lines as usize, commands);
+    assert!(job.summary.constant_power_layers.is_empty());
+}
+
+#[test]
+fn constant_power_layers_count_only_layers_that_cut() {
+    let mut empty = layer("empty", "Unused M3");
+    empty.constant_power = true;
+    let mut mark = layer("mark", "Mark");
+    mark.constant_power = true;
+    let doc = document(
+        vec![empty, layer("cut", "Cut"), mark],
+        vec![
+            rect("a", "cut", 1.0, 1.0, 2.0, 2.0),
+            rect("b", "mark", 5.0, 1.0, 2.0, 2.0),
+            rect("c", "mark", 9.0, 1.0, 2.0, 2.0),
+        ],
+    );
+    let job = generate(&doc, &profile(), absolute(), None).unwrap();
+    assert_eq!(job.summary.constant_power_layers, ["Mark"]);
 }
 
 /// A rectangle and a triangle off its corner, so the rubber band differs
