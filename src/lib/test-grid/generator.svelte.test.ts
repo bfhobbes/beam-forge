@@ -142,8 +142,8 @@ describe("TestGridGenerator", () => {
     ]);
     expect(texts.every((text) => text.layerId === doc.layers[0].id)).toBe(true);
     expect(selection.ids).toEqual([group.id]);
-    expect(generator.view).toBe("pick");
-    expect(generator.added).toBe(true);
+    // Nothing to pick until the grid has been burned.
+    expect(generator.view).toBeNull();
 
     const cells = generator.cells;
     expect(cells?.id).toBe(group.id);
@@ -168,6 +168,21 @@ describe("TestGridGenerator", () => {
     expect(editor.doc.layers).toHaveLength(26 + 16);
     expect(generator.cells?.id).toBe(ids[1]);
     expect(generator.cells?.rows).toBe(3);
+  });
+
+  it("knows when a run burned the latest grid's cells", async () => {
+    const { generator } = setup();
+    expect(generator.burnedIn(["anything"])).toBe(false);
+    await generator.open();
+    await generator.add();
+    const cells = generator.cells!;
+    const cell = cells.cells[2][3]!;
+    const labels = `${cells.id}-labels`;
+    expect(generator.burnedIn([labels, cell.id])).toBe(true);
+    // Labels alone, or another design's layers, aren't a burned grid.
+    expect(generator.burnedIn([labels])).toBe(false);
+    expect(generator.burnedIn(["layer-1"])).toBe(false);
+    expect(generator.burnedIn([])).toBe(false);
   });
 
   it("says why a grid can't be made and doesn't add it", async () => {

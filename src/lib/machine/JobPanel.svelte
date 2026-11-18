@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { FileCode, Frame, Pause, Play, Square } from "@lucide/svelte";
+  import { FileCode, Frame, Grid3x3, Pause, Play, Square } from "@lucide/svelte";
   import { frameLaserLabel, jobSetup } from "#lib/gcode/job-setup.svelte.js";
   import { Button } from "#lib/components/ui/button/index.js";
   import { editor } from "#lib/document/editor.svelte.js";
@@ -8,6 +8,8 @@
   import { formatElapsed, jobStateLabel, machineJob as job } from "./job.svelte.js";
   import OverrideSliders from "./OverrideSliders.svelte";
   import { estimateError, formatError } from "./run.svelte.js";
+  import { testGrid } from "#lib/test-grid/generator.svelte.js";
+  import { textEditing } from "#lib/text/text-editing.svelte.js";
 
   const progress = $derived(job.progress);
   const jobState = $derived(progress?.state);
@@ -21,6 +23,13 @@
   });
   const outcomeError = $derived(run?.outcome ? estimateError(run.outcome) : null);
   const ESTIMATE_HINT = "Estimated from the machine profile's rates and accelerations";
+  // A test grid in the design: once a run has burned it, its cells are ready to judge.
+  const hasGrid = $derived(testGrid.cells !== null);
+  const gridBurned = $derived(
+    hasGrid &&
+      run?.outcome?.state.state === "finished" &&
+      testGrid.burnedIn(run.timeline.layers.map((layer) => layer.layerId)),
+  );
 </script>
 
 <section aria-label="Job" class="space-y-2">
@@ -169,5 +178,48 @@
 
   {#if job.error}
     <p role="alert" class="text-sm text-destructive">{job.error}</p>
+  {/if}
+
+  {#if !job.active && testGrid.available}
+    {#if hasGrid}
+      <div
+        role="status"
+        class={gridBurned
+          ? "space-y-2 rounded-lg border border-primary/40 bg-primary/5 p-2 text-xs"
+          : "space-y-2 rounded-lg border p-2 text-xs text-muted-foreground"}
+      >
+        <p>
+          {gridBurned
+            ? "Test grid burned. Pick the cell that came out best to save its settings as a material preset."
+            : "This design has a material test grid. Burn it on a scrap of the material, then save the best cell as a preset."}
+        </p>
+        <div class="flex gap-1.5">
+          <Button
+            size="sm"
+            variant={gridBurned ? "default" : "outline"}
+            onclick={() => testGrid.pick()}
+          >
+            Save a test cell as preset…
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onclick={() => void testGrid.open(textEditing.defaults.fontFamily)}
+          >
+            New grid…
+          </Button>
+        </div>
+      </div>
+    {:else}
+      <Button
+        size="sm"
+        variant="outline"
+        class="w-full"
+        title="Add a speed × power grid to the design, to find settings for a material"
+        onclick={() => void testGrid.open(textEditing.defaults.fontFamily)}
+      >
+        <Grid3x3 />Material test grid…
+      </Button>
+    {/if}
   {/if}
 </section>

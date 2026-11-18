@@ -95,8 +95,8 @@
           <Inspector>
             {#snippet machine()}
               <ConnectionPanel />
-              <JogPad />
               <JobPanel />
+              <JogPad />
               <MachineConsole />
             {/snippet}
           </Inspector>
