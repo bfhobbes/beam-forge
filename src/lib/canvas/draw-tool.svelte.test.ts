@@ -7,28 +7,36 @@ import { newLayer } from "#lib/document/layers.js";
 import { Selection } from "#lib/document/selection.svelte.js";
 import type { ShapeTool } from "./draw.js";
 import { DrawTool } from "./draw-tool.svelte.js";
+import { buildScene } from "./scene.js";
+import type { SnapOptions } from "./snap.js";
 import type { View } from "./view.js";
 
 // 2 px per mm, world origin at screen (0, 200): world (x, y) is screen (2x, 200 - 2y).
 const view: View = { zoom: 2, x: 0, y: 200 };
 const screen = (x: number, y: number) => ({ x: 2 * x, y: 200 - 2 * y });
 
-function setup(layers = [newLayer(0), newLayer(1)]) {
+function setup(layers = [newLayer(0), newLayer(1)], snap?: SnapOptions) {
   const editor = new DocumentEditor(new Lifecycle());
   for (const layer of layers) editor.execute(addLayer(layer));
   editor.load(editor.doc); // a clean history
   const selection = new Selection(editor);
   const drawingLayer = new DrawingLayer();
   let done = 0;
-  const tool = new DrawTool(editor, selection, drawingLayer, () => done++);
-  const input = (x: number, y: number, shift = false, alt = false) => ({
+  const tool = new DrawTool(editor, selection, drawingLayer, () => done++, snap && (() => snap));
+  const input = (x: number, y: number, shift = false, alt = false, ctrl = false) => ({
     at: screen(x, y),
     shift,
     alt,
+    ctrl,
   });
-  const dragShape = (shape: ShapeTool, from: [number, number], to: [number, number]) => {
-    tool.down(input(...from), view, shape);
-    tool.move(input(...to), view);
+  const dragShape = (
+    shape: ShapeTool,
+    from: [number, number],
+    to: [number, number],
+    ctrl = false,
+  ) => {
+    tool.down(input(...from), view, shape, buildScene(editor.doc));
+    tool.move(input(...to, false, false, ctrl), view);
     tool.up(view);
   };
   const click = (x: number, y: number) => {
@@ -153,5 +161,35 @@ describe("draw tool", () => {
     tool.finish();
     expect(editor.doc.objects).toEqual([]);
     expect(done()).toBe(0);
+  });
+});
+
+describe("draw tool snapping", () => {
+  const bed = { minX: 0, minY: 0, maxX: 400, maxY: 300 };
+  const snap: SnapOptions = { enabled: true, grid: false, bed, area: null };
+  const boxOf = (editor: DocumentEditor) => buildScene(editor.doc).bounds!;
+
+  it("snaps a drawn shape's corners to the bed, with guides while dragging", () => {
+    const { editor, tool, input } = setup(undefined, snap);
+    // Reach is 3 mm: (1, 2) snaps to the corner, (198.5, 151) to the centre.
+    tool.down(input(1, 2), view, "rectangle", buildScene(editor.doc));
+    tool.move(input(198.5, 151), view);
+    expect(tool.guides).toEqual([
+      { axis: "x", at: 200, from: 0, to: 300 },
+      { axis: "y", at: 150, from: 0, to: 400 },
+    ]);
+    tool.up(view);
+    expect(tool.guides).toEqual([]);
+    const box = boxOf(editor);
+    expect(box.minX).toBeCloseTo(0);
+    expect(box.minY).toBeCloseTo(0);
+    expect(box.maxX).toBeCloseTo(200);
+    expect(box.maxY).toBeCloseTo(150);
+  });
+
+  it("draws freely with ctrl held", () => {
+    const { editor, dragShape } = setup(undefined, snap);
+    dragShape("rectangle", [10, 10], [198.5, 151], true);
+    expect(boxOf(editor).maxX).toBeCloseTo(198.5);
   });
 });

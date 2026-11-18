@@ -30,6 +30,9 @@ export interface Viewport {
   height: number;
 }
 
+/** Closest minor grid lines may get, in CSS pixels. */
+export const GRID_MIN_PX = 8;
+
 /** 0.02 px/mm shows a 50 m span; 2000 px/mm shows 0.5 µm per pixel. */
 export const MIN_ZOOM = 0.02;
 export const MAX_ZOOM = 2000;

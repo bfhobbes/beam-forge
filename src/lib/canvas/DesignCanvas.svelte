@@ -14,6 +14,7 @@
   import { DrawTool } from "./draw-tool.svelte.js";
   import { benchmarkDocument, buildScene } from "./scene.js";
   import { SelectTool } from "./select-tool.svelte.js";
+  import type { SnapOptions } from "./snap.js";
   import { findPlacement } from "#lib/document/model.js";
   import { textEditing } from "#lib/text/text-editing.svelte.js";
   import type { ToolpathDrawing } from "#lib/toolpath/render.js";
@@ -22,6 +23,7 @@
     fitBounds,
     panBy,
     screenToWorld,
+    visibleWorld,
     worldToScreen,
     wheelGesture,
     zoomAt,
@@ -37,7 +39,9 @@
    * `cursor` reports the pointer's world position in mm for the status bar.
    * With a `toolpath`, the canvas draws it instead of the design. With
    * `texting`, a click starts a new text there or edits the text under it;
-   * double-clicking text with the select tool edits it too.
+   * double-clicking text with the select tool edits it too. With
+   * `snapping`, moves, resizes and drawing snap to other objects and the bed
+   * (and the grid with `snapToGrid`); holding ctrl holds snapping off.
    */
   let {
     bed,
@@ -48,6 +52,8 @@
     toolpath = null,
     texting = false,
     showFills = false,
+    snapping = false,
+    snapToGrid = false,
   }: {
     /** The machine's work area: the active profile's bed. */
     bed: Bed;
@@ -64,6 +70,10 @@
     texting?: boolean;
     /** Shade the shapes on Fill layers. */
     showFills?: boolean;
+    /** Snap drags to objects and the bed. */
+    snapping?: boolean;
+    /** With `snapping`, fall back to the grid. */
+    snapToGrid?: boolean;
   } = $props();
 
   const ZOOM_STEP = 1.25;
@@ -76,8 +86,15 @@
   let pointer = $state.raw<Point | null>(null);
   let spaceHeld = $state(false);
   let panning = $state(false);
-  const selectTool = new SelectTool(editor, selection);
-  const drawTool = new DrawTool(editor, selection, drawingLayer, () => ondrawn());
+  /** Read by the tools as each drag starts. */
+  const snapOptions = (): SnapOptions => ({
+    enabled: snapping,
+    grid: snapToGrid,
+    bed: bedBounds(bed),
+    area: view ? visibleWorld(view, size) : null,
+  });
+  const selectTool = new SelectTool(editor, selection, snapOptions);
+  const drawTool = new DrawTool(editor, selection, drawingLayer, () => ondrawn(), snapOptions);
 
   // Switching tools abandons a half-drawn shape.
   $effect(() => {
@@ -130,6 +147,7 @@
     marquee: selectTool.marquee,
     draft: drawTool.draft,
     text: textEditing.caret(),
+    guides: [...selectTool.guides, ...drawTool.guides],
   });
   const pointerCursor = $derived(
     panning
@@ -239,6 +257,7 @@
     at: local(event),
     shift: event.shiftKey,
     alt: event.altKey,
+    ctrl: event.ctrlKey || event.metaKey,
   });
 
   /** The text object under a canvas point, if any. */
@@ -269,7 +288,7 @@
     canvas!.setPointerCapture(event.pointerId);
     pointer = local(event);
     if (pan) panning = true;
-    else if (drawing) drawTool.down(pointerInput(event), view!, drawing);
+    else if (drawing) drawTool.down(pointerInput(event), view!, drawing, scene);
     else selectTool.down(pointerInput(event), view!, scene);
   }
 
@@ -338,13 +357,17 @@
     void machineControl.jog(direction);
   }
 
-  /** Shift and alt change a drag as they go down or up, without the pointer moving. */
+  /** Shift, alt and ctrl change a drag as they go down or up, without the pointer moving. */
   function modifierKey(event: KeyboardEvent): boolean {
-    if (event.key !== "Shift" && event.key !== "Alt") return false;
+    if (!["Shift", "Alt", "Control", "Meta"].includes(event.key)) return false;
     if ((!selectTool.transforming && !drawTool.dragging) || !view) return false;
     // Stop alt focusing the window menu mid-drag.
     event.preventDefault();
-    const modifiers = { shift: event.shiftKey, alt: event.altKey };
+    const modifiers = {
+      shift: event.shiftKey,
+      alt: event.altKey,
+      ctrl: event.ctrlKey || event.metaKey,
+    };
     if (drawTool.dragging) drawTool.modifiers(modifiers, view);
     else selectTool.modifiers(modifiers, view);
     return true;
