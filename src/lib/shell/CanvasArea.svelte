@@ -8,6 +8,7 @@
   import { Toggle } from "#lib/components/ui/toggle/index.js";
   import * as ToggleGroup from "#lib/components/ui/toggle-group/index.js";
   import { editor } from "#lib/document/editor.svelte.js";
+  import { machineSettings } from "#lib/machine/settings.svelte.js";
   import type { Point } from "#lib/document/model.js";
   import ToolpathBar from "#lib/toolpath/ToolpathBar.svelte";
   import { toolpathPreview as preview } from "#lib/toolpath/preview.svelte.js";
@@ -65,6 +66,7 @@
 <section aria-label="Canvas" data-tool={tool} class="flex h-full flex-col bg-muted/40">
   <div class="relative min-h-0 flex-1">
     <DesignCanvas
+      bed={machineSettings.bed}
       selecting={tool === "select" && !preview.shown}
       drawing={preview.shown ? null : shapeTool(tool)}
       ondrawn={() => (tool = "select")}

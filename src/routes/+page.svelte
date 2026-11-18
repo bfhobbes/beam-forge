@@ -11,7 +11,6 @@
   import { actions } from "#lib/actions/registry.svelte.js";
   import { arrangeActions } from "#lib/document/arrange-actions.js";
   import { editActions } from "#lib/document/edit-actions.js";
-  import { DEFAULT_BED } from "#lib/canvas/bed.js";
   import { editor } from "#lib/document/editor.svelte.js";
   import { selection } from "#lib/document/selection.svelte.js";
   import CanvasArea from "#lib/shell/CanvasArea.svelte";
@@ -59,8 +58,8 @@
   onMount(() =>
     actions.register(
       ...editActions(editor, selection, { pasteTarget: () => lastCursor }),
-      // The bed the canvas draws.
-      ...arrangeActions(editor, selection, () => DEFAULT_BED),
+      // The active machine profile's bed, as the canvas draws it.
+      ...arrangeActions(editor, selection, () => machineSettings.bed),
     ),
   );
 
