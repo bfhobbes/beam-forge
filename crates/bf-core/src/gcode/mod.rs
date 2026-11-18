@@ -178,6 +178,9 @@ pub struct JobSummary {
     pub cut_length: f64,
     /// Distance travelled with the laser off, mm.
     pub travel_length: f64,
+    /// Names of the layers that cut at constant power (`M3`), in cut order.
+    /// If the link drops during one, the laser stays on where the head stops.
+    pub constant_power_layers: Vec<String>,
 }
 
 /// GCode and what it does.
@@ -235,6 +238,23 @@ impl JobProgram<'_> {
     pub fn layer(&self, plan: &LayerPlan) -> Option<&CutLayer> {
         self.layers.iter().find(|layer| layer.id == plan.layer_id)
     }
+}
+
+/// Names of the planned layers that cut at constant power (`M3`), in cut
+/// order, each once.
+fn constant_power_layers(plan: &Plan, layers: &[CutLayer]) -> Vec<String> {
+    let mut seen: Vec<&str> = Vec::new();
+    let mut names = Vec::new();
+    for planned in &plan.layers {
+        let Some(layer) = layers.iter().find(|layer| layer.id == planned.layer_id) else {
+            continue;
+        };
+        if layer.constant_power && !seen.contains(&layer.id.as_str()) {
+            seen.push(&layer.id);
+            names.push(layer.name.clone());
+        }
+    }
+    names
 }
 
 /// Plans `document` and writes it as GCode for `profile`'s firmware, placed
@@ -389,6 +409,7 @@ impl PlacedJob {
                 cut_length: self.plan.cut_length(),
                 travel_length: self.plan.travel_length(),
                 warning: self.warning.clone(),
+                constant_power_layers: constant_power_layers(&self.plan, &document.layers),
             },
             gcode: written.gcode,
         };

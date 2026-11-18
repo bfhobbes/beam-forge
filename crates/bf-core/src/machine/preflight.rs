@@ -33,6 +33,9 @@ pub enum PreflightCheckId {
     Bounds,
     /// Feed, rapid and laser power overrides at 100%.
     Overrides,
+    /// No layer cuts at constant power (`M3`), which stays lit if the
+    /// connection drops.
+    ConstantPower,
 }
 
 /// How a check came out.
@@ -130,6 +133,7 @@ pub fn preflight(
             check_homed(profile, homed),
             check_bounds(summary),
             check_overrides(status),
+            check_constant_power(summary),
         ],
     }
 }
@@ -254,6 +258,44 @@ pub fn check_overrides(status: Option<&MachineStatus>) -> PreflightCheck {
     }
 }
 
+/// Constant-power (`M3`) layers. If the USB link drops, GRBL runs out its
+/// buffer and stops wherever that ends; in `M3` the laser stays on there, at
+/// that layer's power, until the controller is reset or switched off. The
+/// GCode can't prevent it, so this warns and never blocks.
+pub fn check_constant_power(summary: &JobSummary) -> PreflightCheck {
+    use PreflightCheckId::ConstantPower as Id;
+    let layers = &summary.constant_power_layers;
+    if layers.is_empty() {
+        return PreflightCheck::pass(Id, "No constant-power (M3) layers");
+    }
+    let names = layers
+        .iter()
+        .map(|name| format!("\"{name}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let (title, these) = if layers.len() == 1 {
+        (
+            format!("Constant power (M3) on layer {names}"),
+            "this layer",
+        )
+    } else {
+        (
+            format!("Constant power (M3) on layers {names}"),
+            "these layers",
+        )
+    };
+    PreflightCheck::flag(
+        Id,
+        CheckLevel::Warn,
+        title,
+        format!(
+            "If the USB connection drops during {these}, the laser stays on at the layer's power \
+             where the head stops, until the machine is reset or switched off. Stay at the \
+             machine with its power switch in reach."
+        ),
+    )
+}
+
 fn state_name(state: MachineState) -> &'static str {
     match state {
         MachineState::Idle => "idle",
@@ -303,6 +345,7 @@ mod tests {
             lines: 3,
             cut_length: 1.0,
             travel_length: 1.0,
+            constant_power_layers: Vec::new(),
         }
     }
 
@@ -387,6 +430,33 @@ mod tests {
     }
 
     #[test]
+    fn constant_power_warns_naming_the_m3_layers_and_passes_m4_only_jobs() {
+        assert_eq!(check_constant_power(&summary(true)).level, CheckLevel::Pass);
+        let mut m3 = summary(true);
+        m3.constant_power_layers = vec!["Mark".into()];
+        let one = check_constant_power(&m3);
+        assert_eq!(one.level, CheckLevel::Warn);
+        assert_eq!(one.title, "Constant power (M3) on layer \"Mark\"");
+        let detail = one.detail.unwrap();
+        assert!(
+            detail.contains("during this layer") && detail.contains("power switch in reach"),
+            "{detail}"
+        );
+        m3.constant_power_layers.push("Score".into());
+        let two = check_constant_power(&m3);
+        assert_eq!(
+            two.title,
+            "Constant power (M3) on layers \"Mark\", \"Score\""
+        );
+        assert!(two.detail.unwrap().contains("during these layers"));
+
+        let idle = status(MachineState::Idle, Some(HUNDRED));
+        let checks = preflight(Some(&profile(true, false)), Some(&idle), true, &m3);
+        assert!(!checks.passed());
+        assert_eq!(checks.refusal(&[PreflightCheckId::ConstantPower]), None);
+    }
+
+    #[test]
     fn a_ready_machine_passes_everything() {
         let idle = status(MachineState::Idle, Some(HUNDRED));
         let checks = preflight(
@@ -406,6 +476,7 @@ mod tests {
                 PreflightCheckId::Homed,
                 PreflightCheckId::Bounds,
                 PreflightCheckId::Overrides,
+                PreflightCheckId::ConstantPower,
             ]
         );
     }

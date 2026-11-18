@@ -26,4 +26,9 @@ cutLength: number,
 /**
  * Distance travelled with the laser off, mm.
  */
-travelLength: number, };
+travelLength: number, 
+/**
+ * Names of the layers that cut at constant power (`M3`), in cut order.
+ * If the link drops during one, the laser stays on where the head stops.
+ */
+constantPowerLayers: Array<string>, };

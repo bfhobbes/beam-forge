@@ -3,4 +3,4 @@
 /**
  * Which question a check answers.
  */
-export type PreflightCheckId = "machineReady" | "laserMode" | "homed" | "bounds" | "overrides";
+export type PreflightCheckId = "machineReady" | "laserMode" | "homed" | "bounds" | "overrides" | "constantPower";
