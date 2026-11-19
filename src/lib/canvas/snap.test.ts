@@ -15,6 +15,7 @@ import {
   snapPoint,
   snapSettings,
   snapTargets,
+  spacingGaps,
   type SnapSettings,
 } from "./snap.js";
 
@@ -161,5 +162,35 @@ describe("dragTargets", () => {
       ["a"],
     );
     expect(targets.x.map((line) => line.at)).toEqual([0, 100, 105, 110, 200, 400]);
+  });
+});
+
+describe("equal spacing", () => {
+  it("centres a box between its neighbours in the row", () => {
+    const targets = snapTargets([box(0, 0, 10, 10), box(30, 0, 40, 10)], null);
+    expect(snapBox(targets, box(14.6, 0, 24.6, 10), noGrid).x).toBeCloseTo(0.4);
+    expect(spacingGaps(targets, box(15, 0, 25, 10))).toEqual([
+      { axis: "x", from: 10, to: 15, at: 5 },
+      { axis: "x", from: 25, to: 30, at: 5 },
+    ]);
+  });
+
+  it("repeats the gap between a pair of neighbours", () => {
+    const targets = snapTargets([box(0, 0, 10, 10), box(20, 0, 30, 10)], null);
+    expect(snapBox(targets, box(40.5, 0, 50.5, 10), noGrid).x).toBeCloseTo(-0.5);
+    expect(spacingGaps(targets, box(40, 0, 50, 10))).toEqual([
+      { axis: "x", from: 10, to: 20, at: 5 },
+      { axis: "x", from: 30, to: 40, at: 5 },
+    ]);
+    // Before the pair, too, and down a column.
+    expect(snapBox(targets, box(-20.5, 0, -10.5, 10), noGrid).x).toBeCloseTo(0.5);
+    const column = snapTargets([box(0, 0, 10, 10), box(0, 20, 10, 30)], null);
+    expect(snapBox(column, box(0, 40.5, 10, 50.5), noGrid).y).toBeCloseTo(-0.5);
+  });
+
+  it("ignores objects outside the row", () => {
+    const targets = snapTargets([box(0, 50, 10, 60), box(30, 0, 40, 10)], null);
+    expect(snapBox(targets, box(14.6, 0, 24.6, 10), noGrid).x).toBe(0);
+    expect(spacingGaps(targets, box(15, 0, 25, 10))).toEqual([]);
   });
 });

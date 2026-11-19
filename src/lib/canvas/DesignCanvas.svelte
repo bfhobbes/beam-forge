@@ -148,6 +148,7 @@
     draft: drawTool.draft,
     text: textEditing.caret(),
     guides: [...selectTool.guides, ...drawTool.guides],
+    gaps: selectTool.gaps,
   });
   const pointerCursor = $derived(
     panning
