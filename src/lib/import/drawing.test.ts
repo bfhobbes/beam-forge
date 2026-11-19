@@ -30,6 +30,7 @@ function drawing(colors: string[]): ImportedDrawing {
     dpiReason: "Adobe Illustrator",
     units: null,
     skipped: 1,
+    substitutedFonts: [],
   };
 }
 
@@ -87,7 +88,25 @@ describe("planning an import", () => {
       skipped: 2,
     };
     expect(describeImport(dxf, "", 2)).toBe(
-      "Imported DXF: 2 paths on 2 layers, 100 × 50 mm, drawn in inches. Left out 2 items that can’t be cut, such as text or hatching.",
+      "Imported DXF: 2 paths on 2 layers, 100 × 50 mm, drawn in inches. Left out 2 items that can’t be cut, such as hatching or dimensions.",
+    );
+  });
+
+  it("names the fonts a DXF's text was drawn in instead", () => {
+    const dxf: ImportedDrawing = {
+      ...drawing(["#ff0000"]),
+      format: "dxf",
+      dpi: null,
+      dpiReason: null,
+      units: "millimetres",
+      skipped: 0,
+      substitutedFonts: [
+        { requested: "romans.shx", used: "Arial" },
+        { requested: "ISOCPEUR", used: "Arial" },
+      ],
+    };
+    expect(describeImport(dxf, "Panel", 1)).toBe(
+      "Imported “Panel”: 1 path on 1 layer, 100 × 50 mm, drawn in millimetres. Text in romans.shx was drawn in Arial. Text in ISOCPEUR was drawn in Arial.",
     );
   });
 

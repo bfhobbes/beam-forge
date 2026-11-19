@@ -24,6 +24,7 @@ const drawing: ImportedDrawing = {
   dpiReason: null,
   units: null,
   skipped: 0,
+  substitutedFonts: [],
 };
 
 function setup(overrides: Partial<ImportAdapter> = {}) {

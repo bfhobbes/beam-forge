@@ -87,6 +87,7 @@ pub fn import_svg_str(text: &str) -> Result<ImportedDrawing, ImportError> {
         dpi_reason: scale.reason.map(str::to_string),
         units: None,
         skipped: collector.skipped,
+        substituted_fonts: Vec::new(),
     })
 }
 

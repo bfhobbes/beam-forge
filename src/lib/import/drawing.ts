@@ -81,9 +81,12 @@ export function describeImport(drawing: ImportedDrawing, name: string, layers: n
       ? ""
       : drawing.format === "svg"
         ? ` Left out ${n} ${n === 1 ? "image" : "images"}.`
-        : ` Left out ${n} ${n === 1 ? "item" : "items"} that can’t be cut, such as text or hatching.`;
+        : ` Left out ${n} ${n === 1 ? "item" : "items"} that can’t be cut, such as hatching or dimensions.`;
+  const fonts = drawing.substitutedFonts
+    .map(({ requested, used }) => ` Text in ${requested} was drawn in ${used}.`)
+    .join("");
   const what = name ? `“${name}”` : drawing.format.toUpperCase();
-  return `Imported ${what}: ${paths} on ${onLayers}, ${size}${dpi}${units}.${skipped}`;
+  return `Imported ${what}: ${paths} on ${onLayers}, ${size}${dpi}${units}.${skipped}${fonts}`;
 }
 
 function round(mm: number): string {

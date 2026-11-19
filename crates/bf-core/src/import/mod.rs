@@ -116,9 +116,24 @@ pub struct ImportedDrawing {
     pub dpi_reason: Option<String>,
     /// The units a DXF was drawn in, e.g. "inches"; null for SVG.
     pub units: Option<String>,
-    /// Elements that can't be cut and were left out: bitmaps in an SVG; text,
-    /// hatches, dimensions and 3D entities in a DXF.
+    /// Elements that can't be cut and were left out: bitmaps in an SVG;
+    /// hatches, dimensions, 3D entities (and text when no fonts are installed)
+    /// in a DXF.
     pub skipped: u32,
+    /// Fonts a DXF's text asked for that aren't installed, and what drew it
+    /// instead; empty for SVG.
+    pub substituted_fonts: Vec<FontSubstitution>,
+}
+
+/// Text drawn in a stand-in because its font isn't installed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct FontSubstitution {
+    /// The font the file names, e.g. `romans.shx`.
+    pub requested: String,
+    /// The installed family the text was drawn in.
+    pub used: String,
 }
 
 /// Why a file could not be imported, worded for the user.

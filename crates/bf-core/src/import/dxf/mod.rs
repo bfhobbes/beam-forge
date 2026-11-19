@@ -1,7 +1,9 @@
 //! DXF import through the `dxf` crate.
 //!
 //! Reads model-space LINE, LWPOLYLINE and POLYLINE (bulges included), ARC,
-//! CIRCLE, ELLIPSE and SPLINE, expanding INSERTs of blocks. Units come from
+//! CIRCLE, ELLIPSE and SPLINE, expanding INSERTs of blocks. TEXT and MTEXT
+//! become glyph outlines ([`lettering`]), one path per entity, left out of
+//! joining. Units come from
 //! `$INSUNITS`; when a file doesn't set them the caller has to choose (see
 //! [`ImportError::NeedsUnits`]). Loose pieces whose ends meet within
 //! [`JOIN_TOLERANCE_MM`] are joined into chains and closed where they come
@@ -14,14 +16,17 @@
 //! the page: its bottom-left corner is the origin.
 
 mod aci;
+mod lettering;
 mod spline;
 
+use std::borrow::Cow;
 use std::f64::consts::TAU;
 use std::io::Cursor;
 
 use dxf::entities::{Entity, EntityType};
 use dxf::enums::Units;
 use dxf::{Drawing, Point as DxfPoint, Vector};
+use fontdb::Database;
 
 use super::curve::{Affine, Bounds, Point, arc, distance, pt};
 use super::join::{Piece, join};
@@ -30,6 +35,7 @@ use super::{
     LengthUnit,
 };
 use aci::aci_hex;
+use lettering::{Fonts, Lettering};
 use spline::{Spline, spline_to_subpath, through_points};
 
 /// Ends closer than this (in mm) count as the same point.
@@ -40,16 +46,24 @@ pub const JOIN_TOLERANCE_MM: f64 = 0.01;
 const MAX_BLOCK_DEPTH: usize = 16;
 
 /// Reads a DXF file's bytes (ASCII or binary). `units` is used when the file
-/// doesn't say what its units are, and ignored when it does.
-pub fn import_dxf(data: &[u8], units: Option<LengthUnit>) -> Result<ImportedDrawing, ImportError> {
-    let drawing = Drawing::load(&mut Cursor::new(data)).map_err(|e| ImportError::Invalid {
+/// doesn't say what its units are, and ignored when it does. Text is drawn
+/// with `fonts` (the app passes [`crate::text::system_fonts`]).
+pub fn import_dxf(
+    data: &[u8],
+    units: Option<LengthUnit>,
+    fonts: &Database,
+) -> Result<ImportedDrawing, ImportError> {
+    let data = prepare(data);
+    let drawing = Drawing::load(&mut Cursor::new(&*data)).map_err(|e| ImportError::Invalid {
         format: ImportFormat::Dxf,
         reason: e.to_string(),
     })?;
 
     let mut reader = Reader {
         drawing: &drawing,
+        fonts: Fonts::new(fonts, &drawing),
         pieces: Vec::new(),
+        texts: Vec::new(),
         skipped: 0,
     };
     let top = Context {
@@ -64,7 +78,8 @@ pub fn import_dxf(data: &[u8], units: Option<LengthUnit>) -> Result<ImportedDraw
         }
     }
     let mut pieces = reader.pieces;
-    if pieces.is_empty() {
+    let mut texts = reader.texts;
+    if pieces.is_empty() && texts.is_empty() {
         return Err(ImportError::Empty(ImportFormat::Dxf));
     }
 
@@ -74,7 +89,7 @@ pub fn import_dxf(data: &[u8], units: Option<LengthUnit>) -> Result<ImportedDraw
             Some(LengthUnit::Millimeters) => (1.0, "millimetres"),
             Some(LengthUnit::Inches) => (25.4, "inches"),
             None => {
-                let raw = bounds(&pieces);
+                let raw = bounds(&pieces, &texts);
                 return Err(ImportError::NeedsUnits {
                     width: raw.width(),
                     height: raw.height(),
@@ -83,32 +98,45 @@ pub fn import_dxf(data: &[u8], units: Option<LengthUnit>) -> Result<ImportedDraw
         },
     };
     let scale = Affine::scale(mm_per_unit, mm_per_unit);
-    for piece in &mut pieces {
-        scale.apply_subpath(&mut piece.subpath);
+    let subpaths = pieces
+        .iter_mut()
+        .map(|piece| &mut piece.subpath)
+        .chain(texts.iter_mut().flat_map(|text| &mut text.subpaths));
+    for subpath in subpaths {
+        scale.apply_subpath(subpath);
     }
 
     let pieces = join(pieces, JOIN_TOLERANCE_MM);
-    let page = bounds(&pieces);
+    let page = bounds(&pieces, &texts);
     if page.is_empty() {
         return Err(ImportError::Empty(ImportFormat::Dxf));
     }
     let to_page = Affine::translate(-page.0[0], -page.0[1]);
-    let mut segments: u32 = 0;
-    let paths = pieces
+    let paths: Vec<ImportedPath> = pieces
         .into_iter()
-        .map(|mut piece| {
-            to_page.apply_subpath(&mut piece.subpath);
-            round_subpath(&mut piece.subpath);
-            let count = u32::try_from(piece.subpath.segments.len()).unwrap_or(u32::MAX);
-            segments = segments.saturating_add(count);
-            let (layer, color) = piece.key;
+        .map(|piece| {
+            let (name, color) = piece.key;
             ImportedPath {
-                name: layer,
+                name,
                 color,
                 subpaths: vec![piece.subpath],
             }
         })
+        .chain(texts)
+        .map(|mut path| {
+            for subpath in &mut path.subpaths {
+                to_page.apply_subpath(subpath);
+                round_subpath(subpath);
+            }
+            path
+        })
         .collect();
+    let segments = paths
+        .iter()
+        .flat_map(|path| &path.subpaths)
+        .fold(0u32, |total, subpath| {
+            total.saturating_add(u32::try_from(subpath.segments.len()).unwrap_or(u32::MAX))
+        });
     Ok(ImportedDrawing {
         format: ImportFormat::Dxf,
         width: round(page.width()),
@@ -119,7 +147,72 @@ pub fn import_dxf(data: &[u8], units: Option<LengthUnit>) -> Result<ImportedDraw
         dpi_reason: None,
         units: Some(unit_name.to_string()),
         skipped: reader.skipped,
+        substituted_fonts: reader.fonts.substitutions,
     })
+}
+
+/// Adjusts a text DXF's bytes for two gaps in the `dxf` crate (binary files
+/// are passed through):
+///
+/// - Its `\U+XXXX` decoding, applied to files older than R2007, takes the
+///   six characters after any backslash as one escape and drops them when
+///   the string ends first, so MTEXT's `AB\PCD` reads back as `AB`. Each
+///   backslash that doesn't start a `\U+XXXX` escape is written as
+///   `\U+005C`, which the crate turns back into a backslash.
+/// - It defaults an MTEXT's reference width (group 41) to 1, but a file
+///   that leaves it out means "don't wrap" (ezdxf does this). Each MTEXT
+///   gets a leading `41 = 0`, which the entity's own 41, if any, overrides.
+fn prepare(data: &[u8]) -> Cow<'_, [u8]> {
+    const BINARY_SENTINEL: &[u8] = b"AutoCAD Binary DXF";
+    if data.starts_with(BINARY_SENTINEL) {
+        return Cow::Borrowed(data);
+    }
+    let lines: Vec<&[u8]> = data.split_inclusive(|&b| b == b'\n').collect();
+    let trimmed = |line: &[u8]| String::from_utf8_lossy(line).trim().to_ascii_uppercase();
+    // $ACADVER's value is the second line after the variable's name. AC1021
+    // is R2007, whose files are UTF-8 and read without the escape.
+    let escaped = lines
+        .iter()
+        .position(|line| trimmed(line) == "$ACADVER")
+        .and_then(|at| lines.get(at + 2))
+        .is_none_or(|version| trimmed(version).as_str() < "AC1021");
+    let protect = escaped && data.contains(&b'\\');
+    let mtext = |i: usize| i > 0 && trimmed(lines[i]) == "MTEXT" && trimmed(lines[i - 1]) == "0";
+    if !protect && !(0..lines.len()).any(mtext) {
+        return Cow::Borrowed(data);
+    }
+
+    let unicode_escape = |rest: &[u8]| {
+        rest.len() >= 7
+            && rest[1].eq_ignore_ascii_case(&b'u')
+            && rest[2] == b'+'
+            && rest[3..7].iter().all(u8::is_ascii_hexdigit)
+    };
+    let mut out = Vec::with_capacity(data.len() + 256);
+    for (i, line) in lines.iter().enumerate() {
+        if protect {
+            for (j, &byte) in line.iter().enumerate() {
+                if byte == b'\\' && !unicode_escape(&line[j..]) {
+                    out.extend_from_slice(b"\\U+005C");
+                } else {
+                    out.push(byte);
+                }
+            }
+        } else {
+            out.extend_from_slice(line);
+        }
+        if mtext(i) {
+            let ending: &[u8] = if line.ends_with(b"\r\n") {
+                b"\r\n"
+            } else {
+                b"\n"
+            };
+            for part in [&b" 41"[..], ending, b"0.0", ending] {
+                out.extend_from_slice(part);
+            }
+        }
+    }
+    Cow::Owned(out)
 }
 
 /// Millimetres per drawing unit and the unit's name, or None for unitless.
@@ -153,10 +246,13 @@ fn file_units(units: Units) -> Option<(f64, &'static str)> {
     })
 }
 
-fn bounds(pieces: &[Piece<(String, String)>]) -> Bounds {
+fn bounds(pieces: &[Piece<(String, String)>], texts: &[ImportedPath]) -> Bounds {
     let mut bounds = Bounds::EMPTY;
     for piece in pieces {
         bounds.add_subpath(&piece.subpath);
+    }
+    for subpath in texts.iter().flat_map(|text| &text.subpaths) {
+        bounds.add_subpath(subpath);
     }
     bounds
 }
@@ -203,7 +299,10 @@ struct Context {
 
 struct Reader<'a> {
     drawing: &'a Drawing,
+    fonts: Fonts<'a>,
     pieces: Vec<Piece<(String, String)>>,
+    /// One path per text entity, kept out of joining.
+    texts: Vec<ImportedPath>,
     skipped: u32,
 }
 
@@ -234,6 +333,31 @@ impl Reader<'_> {
                 .and_then(|l| l.color.index())
                 .map_or_else(|| aci_hex(7), aci_hex)
         };
+
+        let lettering = match &entity.specific {
+            EntityType::Text(text) => Some(self.fonts.text(text)),
+            EntityType::MText(text) => Some(self.fonts.mtext(text)),
+            _ => None,
+        };
+        if let Some(lettering) = lettering {
+            match lettering {
+                Lettering::Empty => {}
+                Lettering::Skipped => self.skipped += 1,
+                Lettering::Drawn(mut subpaths) => {
+                    for subpath in &mut subpaths {
+                        context.transform.apply_subpath(subpath);
+                    }
+                    if !subpaths.is_empty() {
+                        self.texts.push(ImportedPath {
+                            name: layer_name,
+                            color,
+                            subpaths,
+                        });
+                    }
+                }
+            }
+            return;
+        }
 
         let mut subpaths = Vec::new();
         let handled = match &entity.specific {
