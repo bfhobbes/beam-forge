@@ -42,7 +42,9 @@
     "updates:publish": "node scripts/updates.mjs publish",
     "updates:serve": "node scripts/update-server.mjs",
     "test:updates:service": "node --test scripts/update-server.test.mjs",
-    "test:release:manifest": "node --test scripts/release-manifest.test.mjs"
+    "test:release:manifest": "node --test scripts/release-manifest.test.mjs",
+    "smoke:web": "node scripts/smoke-web.mjs",
+    "test:smoke:web": "node --test scripts/smoke-web.test.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.4",
@@ -69,6 +71,7 @@
     "eslint-plugin-svelte": "^3.23.1",
     "globals": "^17.6.0",
     "paneforge": "^1.0.2",
+    "playwright-core": "^1.65.1",
     "rbush": "^4.0.1",
     "semver": "^7.8.5",
     "shadcn-svelte": "^1.7.2",

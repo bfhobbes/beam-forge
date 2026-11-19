@@ -21,6 +21,7 @@ npm ci
 npm run desktop:dev      # native app with hot reload
 npm run dev              # browser preview at http://127.0.0.1:1420
 npm run verify           # svelte-check, Oxlint + ESLint, format check, tests, web build
+npm run smoke:web        # load build/ in headless Edge/Chrome; fails on errors or no editor
 npm run test:rust        # cargo test --workspace (also regenerates bindings)
 npm run lint:rust        # rustfmt + clippy -D warnings
 npm run bindings         # regenerate src/lib/bindings from Rust
@@ -33,7 +34,7 @@ npm run sim:stage        # release simulator staged as the app's sidecar (deskto
 cargo run -p bf-sim -- check <file.gcode> [--profile <json>] [--json]  # headless job check
 ```
 
-Run `npm run verify` for frontend changes (`sim:verify` for `simulator/`), plus `test:rust` and `lint:rust` for Rust changes.
+Run `npm run verify` and `npm run smoke:web` for frontend changes (`sim:verify` for `simulator/`), plus `test:rust` and `lint:rust` for Rust changes.
 
 ## Conventions and gotchas
 
