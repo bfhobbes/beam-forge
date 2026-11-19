@@ -8,7 +8,7 @@
   import UpdateManager from "#lib/desktop/UpdateManager.svelte";
   import { lifecycle } from "#lib/desktop/lifecycle.svelte.js";
   import { desktop } from "#lib/desktop/platform.js";
-  import favicon from "#lib/assets/favicon.svg";
+  import { asset } from "$app/paths";
   import JobTimeEstimate from "#lib/toolpath/JobTimeEstimate.svelte";
   import AboutPopover from "./AboutPopover.svelte";
 
@@ -23,7 +23,7 @@
 </script>
 
 <header class="flex h-11 shrink-0 items-center gap-2 border-b bg-background px-2.5">
-  <img src={favicon} alt="" class="size-5" />
+  <img src={asset("favicon.svg")} alt="" class="size-5" />
   <span class="text-sm font-semibold">Beam Forge</span>
   {#if !desktop}<Badge variant="outline">Browser preview</Badge>{/if}
   <Separator orientation="vertical" class="mx-1 my-auto h-5" />

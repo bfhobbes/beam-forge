@@ -1,7 +1,6 @@
 <script lang="ts">
   import "./layout.css";
   import { onMount } from "svelte";
-  import favicon from "#lib/assets/favicon.svg";
   import CloseGuard from "#lib/desktop/CloseGuard.svelte";
   import { darkSchemeQuery, followSystemTheme } from "#lib/shell/theme.js";
   import type { LayoutProps } from "./$types";
@@ -12,8 +11,8 @@
   onMount(() => followSystemTheme(document.documentElement, matchMedia(darkSchemeQuery)));
 </script>
 
+<!-- The icon link is in app.html, so the browser preview never requests /favicon.ico. -->
 <svelte:head>
-  <link rel="icon" href={favicon} />
   <title>Beam Forge</title>
 </svelte:head>
 

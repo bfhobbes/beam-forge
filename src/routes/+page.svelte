@@ -103,7 +103,10 @@
 </script>
 
 <Tooltip.Provider delayDuration={400}>
-  <div class="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
+  <div
+    data-testid="editor-shell"
+    class="flex h-dvh flex-col overflow-hidden bg-background text-foreground"
+  >
     <TopBar project={project.name} />
     <div class="flex min-h-0 flex-1">
       <ToolRail bind:tool />

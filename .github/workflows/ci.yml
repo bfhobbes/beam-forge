@@ -126,6 +126,19 @@ jobs:
             fi
           done
       - run: npm run verify
+      # Loads the build from verify in headless Chrome: fails if the editor doesn't
+      # mount or logs errors. The self-test proves each failure is still caught.
+      - name: Web smoke test
+        run: |
+          npm run smoke:web
+          npm run test:smoke:web
+      - name: Upload the web smoke test's screenshot and console
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-web-failure
+          path: target/smoke-web/
+          if-no-files-found: ignore
       - run: npm run sim:verify
       - run: npm run desktop:build
         if: github.event_name != 'pull_request'
