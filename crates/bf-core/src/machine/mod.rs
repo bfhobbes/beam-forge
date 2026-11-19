@@ -38,8 +38,8 @@ pub use overrides::{
     grbl_override_bytes, override_steps,
 };
 pub use preflight::{
-    CheckLevel, Preflight, PreflightCheck, PreflightCheckId, check_bounds, check_homed,
-    check_laser_mode, check_machine_ready, check_overrides, preflight,
+    CheckLevel, Preflight, PreflightCheck, PreflightCheckId, check_bounds, check_constant_power,
+    check_homed, check_laser_mode, check_machine_ready, check_overrides, preflight,
 };
 pub(crate) use profile::valid_id;
 pub use profile::{

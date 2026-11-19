@@ -207,10 +207,23 @@ pub fn check_homed(profile: Option<&MachineProfile>, homed: bool) -> PreflightCh
     }
 }
 
-/// The job, placed as it will run, stays on the bed.
+/// The job, placed as it will run, stays on the bed. A GCode file whose
+/// bounds couldn't be worked out warns rather than passing.
 pub fn check_bounds(summary: &JobSummary) -> PreflightCheck {
     use PreflightCheckId::Bounds as Id;
-    if summary.inside_bed {
+    if let Some(unknown) = &summary.unknown_bounds {
+        PreflightCheck::flag(
+            Id,
+            CheckLevel::Warn,
+            "Couldn't check bounds",
+            summary.warning.clone().unwrap_or_else(|| {
+                format!(
+                    "Couldn't check bounds: the file uses {} (line {}).",
+                    unknown.construct, unknown.line
+                )
+            }),
+        )
+    } else if summary.inside_bed {
         PreflightCheck::pass(Id, "Job inside the bed")
     } else {
         PreflightCheck::flag(
@@ -258,40 +271,50 @@ pub fn check_overrides(status: Option<&MachineStatus>) -> PreflightCheck {
     }
 }
 
-/// Constant-power (`M3`) layers. If the USB link drops, GRBL runs out its
-/// buffer and stops wherever that ends; in `M3` the laser stays on there, at
-/// that layer's power, until the controller is reset or switched off. The
-/// GCode can't prevent it, so this warns and never blocks.
+/// Constant-power (`M3`) layers, or the first `M3` cut in a GCode file. If
+/// the USB link drops, GRBL runs out its buffer and stops wherever that
+/// ends; in `M3` the laser stays on there, at that power, until the
+/// controller is reset or switched off. The GCode can't prevent it, so this
+/// warns and never blocks.
 pub fn check_constant_power(summary: &JobSummary) -> PreflightCheck {
     use PreflightCheckId::ConstantPower as Id;
     let layers = &summary.constant_power_layers;
-    if layers.is_empty() {
-        return PreflightCheck::pass(Id, "No constant-power (M3) layers");
-    }
-    let names = layers
-        .iter()
-        .map(|name| format!("\"{name}\""))
-        .collect::<Vec<_>>()
-        .join(", ");
-    let (title, these) = if layers.len() == 1 {
+    let (title, these, power) = if !layers.is_empty() {
+        let names = layers
+            .iter()
+            .map(|name| format!("\"{name}\""))
+            .collect::<Vec<_>>()
+            .join(", ");
+        if layers.len() == 1 {
+            (
+                format!("Constant power (M3) on layer {names}"),
+                "this layer",
+                "at the layer's power ",
+            )
+        } else {
+            (
+                format!("Constant power (M3) on layers {names}"),
+                "these layers",
+                "at the layer's power ",
+            )
+        }
+    } else if let Some(line) = summary.constant_power_line {
         (
-            format!("Constant power (M3) on layer {names}"),
-            "this layer",
+            format!("Constant power (M3) from line {line}"),
+            "the M3 cutting",
+            "",
         )
     } else {
-        (
-            format!("Constant power (M3) on layers {names}"),
-            "these layers",
-        )
+        return PreflightCheck::pass(Id, "No constant-power (M3) layers");
     };
     PreflightCheck::flag(
         Id,
         CheckLevel::Warn,
         title,
         format!(
-            "If the USB connection drops during {these}, the laser stays on at the layer's power \
-             where the head stops, until the machine is reset or switched off. Stay at the \
-             machine with its power switch in reach."
+            "If the USB connection drops during {these}, the laser stays on {power}where the \
+             head stops, until the machine is reset or switched off. Stay at the machine with \
+             its power switch in reach."
         ),
     )
 }
@@ -346,6 +369,8 @@ mod tests {
             cut_length: 1.0,
             travel_length: 1.0,
             constant_power_layers: Vec::new(),
+            constant_power_line: None,
+            unknown_bounds: None,
         }
     }
 
