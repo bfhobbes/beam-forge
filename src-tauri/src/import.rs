@@ -55,7 +55,7 @@ fn read(path: PathBuf, units: Option<LengthUnit>) -> Result<ImportOutcome, Impor
     let data = std::fs::read(&path).map_err(|e| ImportError::Read(e.to_string()))?;
     let name = files::display_name(&path);
     let drawing = if files::has_extension(&path, &[DXF]) {
-        match dxf::import_dxf(&data, units) {
+        match dxf::import_dxf(&data, units, bf_core::text::system_fonts()) {
             Err(ImportError::NeedsUnits { width, height }) => {
                 return Ok(ImportOutcome::NeedsUnits {
                     path,

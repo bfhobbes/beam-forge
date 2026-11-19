@@ -1,6 +1,16 @@
 use super::*;
 use crate::import::ImportedSegment;
 
+/// Geist Regular cut down to ASCII (see `text/testdata`): the only font the
+/// tests can see, so it is also the fallback.
+const GEIST: &[u8] = include_bytes!("../../text/testdata/Geist-Regular-ascii.ttf");
+
+fn geist() -> Database {
+    let mut db = Database::new();
+    db.load_font_data(GEIST.to_vec());
+    db
+}
+
 /// DXF text from group-code pairs.
 fn pairs(pairs: &[(i32, &str)]) -> String {
     pairs
@@ -15,6 +25,8 @@ struct File {
     units: Option<i32>,
     layers: Vec<(&'static str, i32)>,
     blocks: Vec<(&'static str, (f64, f64), Vec<String>)>,
+    /// STYLE table rows, already written as pairs.
+    styles: Vec<String>,
 }
 
 impl File {
@@ -23,6 +35,7 @@ impl File {
             units,
             layers: Vec::new(),
             blocks: Vec::new(),
+            styles: Vec::new(),
         }
     }
 
@@ -37,12 +50,21 @@ impl File {
             text += &pairs(&[(9, "$INSUNITS"), (70, &units.to_string())]);
         }
         text += &pairs(&[(0, "ENDSEC")]);
-        if !self.layers.is_empty() {
-            text += &pairs(&[(0, "SECTION"), (2, "TABLES"), (0, "TABLE"), (2, "LAYER")]);
-            for (name, color) in &self.layers {
-                text += &pairs(&[(0, "LAYER"), (2, name), (70, "0"), (62, &color.to_string())]);
+        if !self.layers.is_empty() || !self.styles.is_empty() {
+            text += &pairs(&[(0, "SECTION"), (2, "TABLES")]);
+            if !self.layers.is_empty() {
+                text += &pairs(&[(0, "TABLE"), (2, "LAYER")]);
+                for (name, color) in &self.layers {
+                    text += &pairs(&[(0, "LAYER"), (2, name), (70, "0"), (62, &color.to_string())]);
+                }
+                text += &pairs(&[(0, "ENDTAB")]);
             }
-            text += &pairs(&[(0, "ENDTAB"), (0, "ENDSEC")]);
+            if !self.styles.is_empty() {
+                text += &pairs(&[(0, "TABLE"), (2, "STYLE")]);
+                text += &self.styles.concat();
+                text += &pairs(&[(0, "ENDTAB")]);
+            }
+            text += &pairs(&[(0, "ENDSEC")]);
         }
         if !self.blocks.is_empty() {
             text += &pairs(&[(0, "SECTION"), (2, "BLOCKS")]);
@@ -68,7 +90,7 @@ impl File {
     }
 
     fn import(&self, entities: &[String]) -> ImportedDrawing {
-        import_dxf(self.build(entities).as_bytes(), None).unwrap()
+        import_dxf(self.build(entities).as_bytes(), None, &geist()).unwrap()
     }
 }
 
@@ -164,7 +186,7 @@ fn unitless_files_ask_and_then_use_the_answer() {
     let file = File::units(None);
     let text = file.build(&rectangle_lines("0", 7, 0.0, 0.0, 4.0, 2.0));
     assert_eq!(
-        import_dxf(text.as_bytes(), None),
+        import_dxf(text.as_bytes(), None, &geist()),
         Err(ImportError::NeedsUnits {
             width: 4.0,
             height: 2.0
@@ -172,16 +194,16 @@ fn unitless_files_ask_and_then_use_the_answer() {
     );
     let unitless = File::units(Some(0)).build(&rectangle_lines("0", 7, 0.0, 0.0, 4.0, 2.0));
     assert!(matches!(
-        import_dxf(unitless.as_bytes(), None),
+        import_dxf(unitless.as_bytes(), None, &geist()),
         Err(ImportError::NeedsUnits { .. })
     ));
-    let drawing = import_dxf(text.as_bytes(), Some(LengthUnit::Inches)).unwrap();
+    let drawing = import_dxf(text.as_bytes(), Some(LengthUnit::Inches), &geist()).unwrap();
     assert_near(drawing.width, 101.6);
-    let drawing = import_dxf(text.as_bytes(), Some(LengthUnit::Millimeters)).unwrap();
+    let drawing = import_dxf(text.as_bytes(), Some(LengthUnit::Millimeters), &geist()).unwrap();
     assert_near(drawing.width, 4.0);
     // A file that names its units ignores the fallback.
     let inches = File::units(Some(1)).build(&rectangle_lines("0", 7, 0.0, 0.0, 4.0, 2.0));
-    let drawing = import_dxf(inches.as_bytes(), Some(LengthUnit::Millimeters)).unwrap();
+    let drawing = import_dxf(inches.as_bytes(), Some(LengthUnit::Millimeters), &geist()).unwrap();
     assert_near(drawing.width, 101.6);
 }
 
@@ -377,7 +399,7 @@ fn inserts_expand_blocks_with_their_transform() {
 }
 
 #[test]
-fn unsupported_and_paper_space_entities_are_left_out() {
+fn unsupported_and_paper_space_entities_are_left_out_but_text_is_not() {
     let drawing = mm().import(&[
         line("0", 7, (0.0, 0.0), (10.0, 0.0)),
         pairs(&[
@@ -401,9 +423,10 @@ fn unsupported_and_paper_space_entities_are_left_out() {
         // A circle on a tilted plane can't be laid flat.
         circle((0.0, 0.0), 5.0, &[(210, "1"), (220, "0"), (230, "0")]),
     ]);
-    assert_eq!(drawing.paths.len(), 1);
-    assert_eq!(drawing.skipped, 3);
-    assert_near(drawing.width, 10.0);
+    // The TEXT imports; the POINT, the tilted circle and the paper-space line
+    // don't.
+    assert_eq!(drawing.paths.len(), 2);
+    assert_eq!(drawing.skipped, 2);
 }
 
 #[test]
@@ -419,11 +442,13 @@ fn downward_extrusion_mirrors_x() {
 #[test]
 fn rejects_invalid_and_empty_files() {
     assert!(matches!(
-        import_dxf(b"not a dxf", None),
+        import_dxf(b"not a dxf", None, &geist()),
         Err(ImportError::Invalid { .. } | ImportError::Empty(_))
     ));
     assert_eq!(
-        import_dxf(mm().build(&[]).as_bytes(), None),
+        import_dxf(mm().build(&[]).as_bytes(), None, &geist()),
         Err(ImportError::Empty(ImportFormat::Dxf))
     );
 }
+
+mod lettering;
