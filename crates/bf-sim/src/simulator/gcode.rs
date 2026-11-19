@@ -752,7 +752,6 @@ impl Simulator {
                 self.ops.push_back(Op::Sync);
                 if !check {
                     self.ops.push_back(Op::Pause);
-                    self.ops.push_back(Op::AwaitResume);
                 }
             }
             ProgramFlow::Completed => {

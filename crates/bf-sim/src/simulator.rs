@@ -240,10 +240,9 @@ enum Op {
     /// Store coordinate data (`G10`, `G28.1`, `G30.1`) by GRBL's index; GRBL
     /// syncs before EEPROM writes.
     Coordinates(usize, [f64; 3]),
-    /// `M0`: a feed hold once motion has finished.
+    /// `M0`: a feed hold once motion has finished. The completed hold
+    /// suspends the queue behind it until cycle start.
     Pause,
-    /// Wait for cycle start to end the `M0` hold.
-    AwaitResume,
     /// Queue a straight move (GRBL's `mc_line`).
     Line([f64; 3], LineData),
     ProgramEnd,
@@ -292,8 +291,9 @@ pub struct Simulator {
     motion: Motion,
     ops: VecDeque<Op>,
     dwell_until: Option<Duration>,
-    /// A dwell's time left while the door suspends it: GRBL's dwell loop
-    /// blocks in the suspend loop, so the dwell resumes where it stopped.
+    /// A dwell's time left while a completed feed hold or the door suspends
+    /// it: GRBL's dwell loop (`delay_sec`) blocks in the suspend loop, so
+    /// the dwell resumes where it stopped.
     dwell_paused: Option<Duration>,
     door_restore: Option<DoorRestore>,
     stop_reason: Option<StopReason>,
@@ -614,7 +614,7 @@ impl Simulator {
             && !self.critical
             && self.stop_reason != Some(StopReason::SoftLimit)
             && self.state != MachineState::Sleep
-            && !self.suspended_by_door()
+            && !self.suspended()
             && !self.stalled()
     }
 
@@ -688,7 +688,7 @@ impl Simulator {
     /// Runs queued line effects until one has to wait.
     fn run_ops(&mut self) {
         while let Some(op) = self.ops.front().cloned() {
-            if self.dwell_until.is_some() || self.suspended_by_door() {
+            if self.dwell_until.is_some() || self.suspended() {
                 return;
             }
             match op {
@@ -714,11 +714,6 @@ impl Simulator {
                     }
                 }
                 Op::Pause => self.feed_hold(),
-                Op::AwaitResume => {
-                    if matches!(self.state, MachineState::Hold(_)) {
-                        return;
-                    }
-                }
                 Op::Line(target, data) => {
                     if self.profile.settings.soft_limits() && !self.within_travel(target) {
                         self.soft_limit_violation();
@@ -882,7 +877,10 @@ impl Simulator {
     /// The machine has stopped in a feed hold. With `DISABLE_LASER_DURING_HOLD`
     /// (on in stock GRBL) a laser-mode hold asks for the spindle stop
     /// override, as `0x9E` does, so the laser stays off until resumed.
+    /// GRBL's main loop now blocks in its suspend loop (see
+    /// [`Self::suspended`]), freezing any dwell.
     fn hold_complete(&mut self) {
+        self.pause_dwell();
         self.set_state(MachineState::Hold(0));
         if self.profile.settings.laser_mode() {
             self.spindle_stop_requested = true;
@@ -945,9 +943,7 @@ impl Simulator {
         self.spindle_stop_requested = false;
         self.door_restore = None;
         // A dwell blocks in GRBL's suspend loop until the resume.
-        if let Some(at) = self.dwell_until.take() {
-            self.dwell_paused = Some(at.saturating_sub(self.now));
-        }
+        self.pause_dwell();
         let was = self.state;
         self.set_state(MachineState::Door(u8::from(self.door_open)));
         if self.stop_reason.is_none() {
@@ -974,10 +970,20 @@ impl Simulator {
         self.ovr_counter = 0;
     }
 
-    /// Lines, their effects and dwells wait while the door holds the
-    /// machine, as GRBL's main loop blocks in its suspend loop.
-    fn suspended_by_door(&self) -> bool {
-        matches!(self.state, MachineState::Door(_))
+    /// Lines, their effects and dwells wait while a completed feed hold or
+    /// the door holds the machine, as GRBL's main loop blocks in
+    /// `protocol_exec_rt_suspend` until resumed. A hold still decelerating
+    /// (`Hold:1`) does not suspend: GRBL keeps parsing and planning lines
+    /// until `SUSPEND_HOLD_COMPLETE`.
+    fn suspended(&self) -> bool {
+        matches!(self.state, MachineState::Door(_) | MachineState::Hold(0))
+    }
+
+    /// Freezes a running dwell's countdown until [`Self::resume_cycle`].
+    fn pause_dwell(&mut self) {
+        if let Some(at) = self.dwell_until.take() {
+            self.dwell_paused = Some(at.saturating_sub(self.now));
+        }
     }
 
     /// `~` with the door closed: GRBL restarts what the door stopped
@@ -1032,7 +1038,7 @@ impl Simulator {
     }
 
     /// Leaves a completed hold or door: back to running the queue, or idle,
-    /// and a dwell the door suspended carries on.
+    /// and a dwell the hold or door suspended carries on.
     fn resume_cycle(&mut self) {
         if let Some(left) = self.dwell_paused.take() {
             self.dwell_until = Some(self.now + left);
