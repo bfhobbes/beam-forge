@@ -13,6 +13,7 @@
 mod frame;
 mod grbl;
 mod run;
+mod scan;
 mod toolpath;
 
 use std::fmt;
@@ -30,6 +31,7 @@ pub use frame::{
 };
 pub(crate) use grbl::{number, write as write_grbl, write_frame as write_grbl_frame};
 pub use run::{DesignRun, RunPlan, WorkPlacement, run};
+pub use scan::{UnknownBounds, scan, scan_reader};
 pub use toolpath::{Toolpath, estimate, toolpath};
 
 /// Positions closer to the bed edge than this still count as on the bed.
@@ -160,8 +162,8 @@ impl JobBounds {
     }
 }
 
-/// What a generated job does, for the UI to show before it is exported or
-/// run.
+/// What a job does, for the UI to show before it is exported or run: a job
+/// generated from the design, or a GCode file [`scan`]ned before it runs.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "gcode/")]
@@ -169,7 +171,8 @@ pub struct JobSummary {
     /// Everywhere the head goes after it leaves the start, in the machine's
     /// work coordinates.
     pub bounds: JobBounds,
-    /// False when the job leaves the bed; `warning` then says by how much.
+    /// False when the job leaves the bed, or its bounds are unknown;
+    /// `warning` then says by how much, or why.
     pub inside_bed: bool,
     pub warning: Option<String>,
     /// Command lines in the GCode.
@@ -180,7 +183,17 @@ pub struct JobSummary {
     pub travel_length: f64,
     /// Names of the layers that cut at constant power (`M3`), in cut order.
     /// If the link drops during one, the laser stays on where the head stops.
+    /// Empty for a GCode file, which has no layers: see
+    /// `constant_power_line`.
     pub constant_power_layers: Vec<String>,
+    /// For a GCode file: the first line (1-based, counting every line) that
+    /// cuts at constant power, a `G1`-`G3` move with `M3` on and `S` above
+    /// 0. `None` for a generated job, which names its layers instead.
+    pub constant_power_line: Option<u32>,
+    /// For a GCode file: the first thing it does that the scanner can't
+    /// place, such as `G92`. `bounds` then can't be trusted, `inside_bed` is
+    /// false and `warning` says why. `None` for a generated job.
+    pub unknown_bounds: Option<UnknownBounds>,
 }
 
 /// GCode and what it does.
@@ -410,6 +423,8 @@ impl PlacedJob {
                 travel_length: self.plan.travel_length(),
                 warning: self.warning.clone(),
                 constant_power_layers: constant_power_layers(&self.plan, &document.layers),
+                constant_power_line: None,
+                unknown_bounds: None,
             },
             gcode: written.gcode,
         };

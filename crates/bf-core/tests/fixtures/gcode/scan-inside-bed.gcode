@@ -1,0 +1,9 @@
+; A square well inside a 400 x 400 mm bed
+G21 G90
+M4 S0
+G0 X10 Y10
+G1 X110 Y10 S600 F1500
+G1 X110 Y110
+G1 X10 Y110
+G1 X10 Y10
+M5

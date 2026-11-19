@@ -24,6 +24,8 @@ const summary: JobSummary = {
   cutLength: 120,
   travelLength: 14,
   constantPowerLayers: [],
+  constantPowerLine: null,
+  unknownBounds: null,
 };
 
 const allPass: Preflight = {
