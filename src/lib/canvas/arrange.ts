@@ -38,6 +38,8 @@ export interface Modifiers {
   shift: boolean;
   /** Scale about the centre instead of the opposite handle. */
   alt: boolean;
+  /** Ctrl (or Cmd): hold off snapping while it is down. */
+  ctrl?: boolean;
 }
 
 const ROTATE_SNAP = Math.PI / 12;

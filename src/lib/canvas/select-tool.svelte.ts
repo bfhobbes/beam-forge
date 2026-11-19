@@ -2,16 +2,37 @@
  * The select tool's pointer gestures on the canvas: click and shift-click
  * select, marquee select, and dragging the selection or its handles. Each
  * drag is one undo step: every update executes with the gesture's coalesce
- * key, rebuilt from the document as it was when the drag began.
+ * key, rebuilt from the document as it was when the drag began. Moves and
+ * resizes snap to other objects, the bed and the grid unless snapping is off
+ * or ctrl is held; `guides` shows what they snapped to.
  */
 import { DocumentError } from "#lib/document/commands.js";
 import type { DocumentEditor } from "#lib/document/editor.svelte.js";
 import type { DesignDocument, Point } from "#lib/document/model.js";
 import type { Selection } from "#lib/document/selection.svelte.js";
-import { dragTransform, transformObjects, type Gesture, type Modifiers } from "./arrange.js";
+import { applyToPoint, type Transform } from "#lib/document/transform.js";
+import {
+  anchorPoint,
+  dragTransform,
+  HANDLE_ANCHORS,
+  transformObjects,
+  type Gesture,
+  type Modifiers,
+} from "./arrange.js";
 import { handleAt, handleCursor, selectionHandles, type Handle } from "./handles.js";
 import { marqueeMode, marqueeSelect, type MarqueeMode } from "./marquee.js";
-import type { Scene } from "./scene.js";
+import { unionBounds, type Scene } from "./scene.js";
+import {
+  boxGuides,
+  dragTargets,
+  SNAP_OFF,
+  snapBox,
+  snapPoint,
+  snapSettings,
+  type Guide,
+  type SnapOptions,
+  type SnapTargets,
+} from "./snap.js";
 import { screenToWorld, type Bounds, type View } from "./view.js";
 
 /** A pointer event's position in CSS px from the canvas corner, and its modifiers. */
@@ -39,6 +60,22 @@ interface Press {
   ids: string[];
   bounds: Bounds | null;
   coalesce: string;
+  /** What a move or resize snaps to, gathered once the press becomes a drag; null for no snapping. */
+  snap: { options: SnapOptions; targets: () => SnapTargets } | null;
+}
+
+/** The axis-aligned bounds of a box after a move or scale. */
+function transformBounds(box: Bounds, by: Transform): Bounds {
+  const corners = [
+    { x: box.minX, y: box.minY },
+    { x: box.maxX, y: box.maxY },
+  ].map((corner) => applyToPoint(by, corner));
+  return unionBounds(corners.map(({ x, y }) => ({ minX: x, minY: y, maxX: x, maxY: y })))!;
+}
+
+function once<T>(make: () => T): () => T {
+  let value: { made: T } | null = null;
+  return () => (value ??= { made: make() }).made;
 }
 
 const inside = (box: Bounds, { x, y }: Point) =>
@@ -49,13 +86,22 @@ let gestures = 0;
 export class SelectTool {
   /** The marquee being dragged, in CSS px, for the overlay. */
   marquee = $state.raw<{ from: Point; to: Point; mode: MarqueeMode } | null>(null);
+  /** Alignment guides for the drag under way, in world mm. */
+  guides = $state.raw<Guide[]>([]);
   #press = $state.raw<Press | null>(null);
   #editor: DocumentEditor;
   #selection: Selection;
+  #snap: () => SnapOptions;
 
-  constructor(editor: DocumentEditor, selection: Selection) {
+  /** `snap` is read as each press starts. */
+  constructor(
+    editor: DocumentEditor,
+    selection: Selection,
+    snap: () => SnapOptions = () => SNAP_OFF,
+  ) {
     this.#editor = editor;
     this.#selection = selection;
+    this.#snap = snap;
   }
 
   /** A transform drag is under way. */
@@ -92,6 +138,9 @@ export class SelectTool {
       }
     }
     const ids = this.#selection.ids;
+    const options = this.#snap();
+    const snaps =
+      options.enabled && gesture !== null && gesture !== "marquee" && gesture.kind !== "rotate";
     this.#press = {
       start: input.at,
       startWorld: world,
@@ -104,6 +153,7 @@ export class SelectTool {
       ids,
       bounds: scene.boundsOf(ids),
       coalesce: `select-tool-${++gestures}`,
+      snap: snaps ? { options, targets: once(() => dragTargets(scene, options, ids)) } : null,
     };
   }
 
@@ -129,6 +179,7 @@ export class SelectTool {
     if (!press) return;
     this.#press = null;
     this.marquee = null;
+    this.guides = [];
     if (press.gesture === "marquee") {
       if (press.dragging) {
         const ids = marqueeSelect(scene, this.#worldBox(press, view), this.#mode(press));
@@ -196,13 +247,40 @@ export class SelectTool {
       return;
     }
     if (!press.bounds || press.ids.length === 0) return;
-    const by = dragTransform(
-      press.gesture,
-      press.bounds,
-      press.startWorld,
-      screenToWorld(view, press.last.at),
-      press.last,
-    );
+    const gesture = press.gesture;
+    const bounds = press.bounds;
+    let to = screenToWorld(view, press.last.at);
+    const snap = press.last.ctrl ? null : press.snap;
+    if (snap) {
+      // Shift the pointer so the box edge or handle lands on what it snaps to.
+      const settings = snapSettings(view.zoom, snap.options);
+      const dx = to.x - press.startWorld.x;
+      const dy = to.y - press.startWorld.y;
+      if (gesture.kind === "move") {
+        const moved = {
+          minX: bounds.minX + dx,
+          minY: bounds.minY + dy,
+          maxX: bounds.maxX + dx,
+          maxY: bounds.maxY + dy,
+        };
+        const shift = snapBox(snap.targets(), moved, settings);
+        to = { x: to.x + shift.x, y: to.y + shift.y };
+      } else if (gesture.kind === "scale") {
+        const anchor = HANDLE_ANCHORS[gesture.handle];
+        const start = anchorPoint(bounds, anchor);
+        const handle = { x: start.x + dx, y: start.y + dy };
+        const snapped = snapPoint(snap.targets(), handle, settings, {
+          x: anchor.x !== 0.5,
+          y: anchor.y !== 0.5,
+        });
+        to = { x: to.x + snapped.x - handle.x, y: to.y + snapped.y - handle.y };
+      }
+    }
+    const by = dragTransform(gesture, bounds, press.startWorld, to, press.last);
+    this.guides =
+      snap && gesture.kind !== "rotate"
+        ? boxGuides(snap.targets(), transformBounds(bounds, by))
+        : [];
     try {
       this.#editor.execute(transformObjects(press.doc, press.ids, by), {
         coalesce: press.coalesce,
@@ -211,6 +289,7 @@ export class SelectTool {
       // An undo mid-drag can remove what the drag holds; the drag just stops.
       if (!(error instanceof DocumentError)) throw error;
       this.#press = null;
+      this.guides = [];
       this.#editor.endCoalesce();
     }
   }

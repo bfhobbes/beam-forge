@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Magnet from "@lucide/svelte/icons/magnet";
   import PaintBucket from "@lucide/svelte/icons/paint-bucket";
   import { onMount, untrack } from "svelte";
   import { actions } from "#lib/actions/registry.svelte.js";
@@ -53,13 +54,29 @@
   });
 
   onMount(() =>
-    actions.register({
-      id: "view.toggle-fills",
-      title: "Show or hide fills",
-      group: "View",
-      keywords: ["fill", "shade", "solid", "preview"],
-      run: () => viewPrefs.setShowFills(!viewPrefs.showFills),
-    }),
+    actions.register(
+      {
+        id: "view.toggle-fills",
+        title: "Show or hide fills",
+        group: "View",
+        keywords: ["fill", "shade", "solid", "preview"],
+        run: () => viewPrefs.setShowFills(!viewPrefs.showFills),
+      },
+      {
+        id: "view.toggle-snapping",
+        title: "Turn snapping on or off",
+        group: "View",
+        keywords: ["snap", "guides", "align", "smart guides", "magnet"],
+        run: () => viewPrefs.setSnapping(!viewPrefs.snapping),
+      },
+      {
+        id: "view.toggle-grid-snapping",
+        title: "Turn snapping to the grid on or off",
+        group: "View",
+        keywords: ["snap", "grid"],
+        run: () => viewPrefs.setSnapToGrid(!viewPrefs.snapToGrid),
+      },
+    ),
   );
 </script>
 
@@ -73,6 +90,8 @@
       toolpath={drawing}
       texting={tool === "text" && !preview.shown}
       showFills={viewPrefs.showFills}
+      snapping={viewPrefs.snapping}
+      snapToGrid={viewPrefs.snapToGrid}
       bind:cursor
     />
     <div class="absolute top-7 right-2 flex gap-2">
@@ -86,6 +105,16 @@
         >
           <PaintBucket />
           Fills
+        </Toggle>
+        <Toggle
+          variant="outline"
+          size="sm"
+          class="bg-background px-3"
+          title="Snap to objects, the bed and the grid (hold Ctrl to drag freely)"
+          bind:pressed={() => viewPrefs.snapping, (value) => viewPrefs.setSnapping(value)}
+        >
+          <Magnet />
+          Snap
         </Toggle>
       {/if}
       <ToggleGroup.Root

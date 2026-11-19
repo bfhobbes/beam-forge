@@ -3,7 +3,8 @@
  * drags; line clicks points and finishes on a double-click, Enter, or a
  * click back on its first point (which closes it). Escape abandons the
  * shape. A finished shape is one undo step, on the layer picked in the
- * Layers panel, and is left selected.
+ * Layers panel, and is left selected. Points snap to objects, the bed and
+ * the grid unless snapping is off or ctrl is held; `guides` shows what to.
  */
 import { batch, insert, type Command } from "#lib/document/commands.js";
 import type { DrawingLayer } from "#lib/document/drawing-layer.svelte.js";
@@ -19,7 +20,18 @@ import type { Selection } from "#lib/document/selection.svelte.js";
 import { outline, transformSubpath, type ShapeObject } from "#lib/document/shapes.js";
 import type { Modifiers } from "./arrange.js";
 import { pathFromPoints, shapeFromDrag, type ShapeDrag, type ShapeTool } from "./draw.js";
+import type { Scene } from "./scene.js";
 import type { PointerInput } from "./select-tool.svelte.js";
+import {
+  dragTargets,
+  pointGuides,
+  SNAP_OFF,
+  snapPoint,
+  snapSettings,
+  type Guide,
+  type SnapOptions,
+  type SnapTargets,
+} from "./snap.js";
 import { screenToWorld, worldToScreen, type View } from "./view.js";
 
 /** How close a click must be to a line's first or last point to hit it, CSS px. */
@@ -31,11 +43,18 @@ interface Drag {
   last: PointerInput;
 }
 
+interface Snapping {
+  options: SnapOptions;
+  targets: SnapTargets;
+}
+
 const PLACEHOLDER = { id: "draft", layerId: "" };
 
 export class DrawTool {
   /** The shape being drawn, in world mm, for the overlay. */
   draft = $state.raw<Subpath[]>([]);
+  /** Alignment guides for the point being placed, in world mm. */
+  guides = $state.raw<Guide[]>([]);
   #drag: Drag | null = null;
   /** A line's points so far, world mm. */
   #points: Point[] = [];
@@ -44,18 +63,23 @@ export class DrawTool {
   #selection: Selection;
   #layer: DrawingLayer;
   #done: () => void;
+  #snapOptions: () => SnapOptions;
+  /** Targets for the shape being drawn, gathered as it starts. */
+  #snap: Snapping | null = null;
 
-  /** `done` runs after each finished shape. */
+  /** `done` runs after each finished shape; `snap` is read as each shape starts. */
   constructor(
     editor: DocumentEditor,
     selection: Selection,
     layer: DrawingLayer,
     done: () => void = () => {},
+    snap: () => SnapOptions = () => SNAP_OFF,
   ) {
     this.#editor = editor;
     this.#selection = selection;
     this.#layer = layer;
     this.#done = done;
+    this.#snapOptions = snap;
   }
 
   /** A drag is under way, so shift and alt change it. */
@@ -68,13 +92,18 @@ export class DrawTool {
     return this.#points.length > 0;
   }
 
-  down(input: PointerInput, view: View, tool: ShapeTool): void {
-    const world = screenToWorld(view, input.at);
+  down(input: PointerInput, view: View, tool: ShapeTool, scene?: Scene): void {
+    if (tool !== "line" || this.#points.length === 0) {
+      if (tool !== "line") this.cancel();
+      const options = this.#snapOptions();
+      this.#snap =
+        options.enabled && scene ? { options, targets: dragTargets(scene, options) } : null;
+    }
+    const world = this.#world(input, view);
     if (tool === "line") {
       this.#click(input.at, world, view);
       return;
     }
-    this.cancel();
     this.#drag = { tool, from: world, last: input };
   }
 
@@ -83,7 +112,7 @@ export class DrawTool {
       this.#drag = { ...this.#drag, last: input };
       this.#preview(view);
     } else if (this.#points.length > 0) {
-      this.#hover = screenToWorld(view, input.at);
+      this.#hover = this.#world(input, view);
       this.#preview(view);
     }
   }
@@ -97,9 +126,9 @@ export class DrawTool {
   up(view: View): void {
     const drag = this.#drag;
     if (!drag) return;
-    this.#drag = null;
-    this.draft = [];
-    const shape = shapeFromDrag(drag.tool, this.#shapeDrag(drag, view), this.#newObject());
+    const shapeDrag = this.#shapeDrag(drag, view);
+    this.cancel();
+    const shape = shapeFromDrag(drag.tool, shapeDrag, this.#newObject());
     if (shape) this.#commit(shape);
   }
 
@@ -116,7 +145,22 @@ export class DrawTool {
     this.#drag = null;
     this.#points = [];
     this.#hover = null;
+    this.#snap = null;
     this.draft = [];
+    this.guides = [];
+  }
+
+  /** The pointer in world mm, snapped unless snapping is off or ctrl is down; updates `guides`. */
+  #world(input: PointerInput, view: View): Point {
+    const world = screenToWorld(view, input.at);
+    const snap = input.ctrl ? null : this.#snap;
+    if (!snap) {
+      this.guides = [];
+      return world;
+    }
+    const point = snapPoint(snap.targets, world, snapSettings(view.zoom, snap.options));
+    this.guides = pointGuides(snap.targets, point);
+    return point;
   }
 
   #click(at: Point, world: Point, view: View): void {
@@ -142,7 +186,7 @@ export class DrawTool {
   #shapeDrag(drag: Drag, view: View): ShapeDrag {
     return {
       from: drag.from,
-      to: screenToWorld(view, drag.last.at),
+      to: this.#world(drag.last, view),
       shift: drag.last.shift,
       alt: drag.last.alt,
     };
