@@ -10,7 +10,9 @@ import type { CaretGeometry } from "#lib/text/text-editing.svelte.js";
 import { HANDLE_SIZE, ROTATE_RADIUS, type Handle } from "./handles.js";
 import type { MarqueeMode } from "./marquee.js";
 import type { Scene, SceneItem } from "./scene.js";
+import type { Gap, Guide } from "./snap.js";
 import {
+  GRID_MIN_PX,
   gridSteps,
   rulerStep,
   visibleWorld,
@@ -21,8 +23,6 @@ import {
 
 /** Ruler thickness in CSS pixels. */
 export const RULER_SIZE = 20;
-/** Closest minor grid lines may get, in CSS pixels. */
-const GRID_MIN_PX = 8;
 /** Closest labelled ruler ticks may get, in CSS pixels. */
 const RULER_LABEL_MIN_PX = 56;
 
@@ -36,6 +36,8 @@ export interface CanvasTheme {
   rulerText: string;
   origin: string;
   selection: string;
+  /** Snapping guide lines. */
+  guide: string;
 }
 
 export function readTheme(element: Element): CanvasTheme {
@@ -50,6 +52,7 @@ export function readTheme(element: Element): CanvasTheme {
     rulerText: read("--muted-foreground"),
     origin: read("--destructive"),
     selection: read("--foreground"),
+    guide: read("--destructive"),
   };
 }
 
@@ -82,6 +85,10 @@ export interface Overlay {
   draft: readonly Subpath[];
   /** The caret or selection of text being typed, in world mm. */
   text?: CaretGeometry | null;
+  /** Snapping guide lines, in world mm. */
+  guides?: readonly Guide[];
+  /** Equal-spacing hints, in world mm. */
+  gaps?: readonly Gap[];
 }
 
 const itemPaths = new WeakMap<SceneItem, Path2D>();
@@ -332,6 +339,8 @@ function drawOverlay(ctx: CanvasRenderingContext2D, frame: Frame, overlay: Overl
   }
 
   if (overlay.text) drawCaret(ctx, frame, overlay.text);
+  if (overlay.guides?.length) drawGuides(ctx, frame, overlay.guides);
+  if (overlay.gaps?.length) drawGaps(ctx, frame, overlay.gaps);
 
   if (overlay.marquee) {
     // Window: solid edge. Crossing: dashed edge, the CAD convention.
@@ -349,6 +358,80 @@ function drawOverlay(ctx: CanvasRenderingContext2D, frame: Frame, overlay: Overl
     ctx.setLineDash([]);
     ctx.globalAlpha = 1;
   }
+}
+
+/** Snapping guides: crisp 1px lines, with a cross at each end. */
+function drawGuides(ctx: CanvasRenderingContext2D, frame: Frame, guides: readonly Guide[]): void {
+  const { view, dpr, theme } = frame;
+  const cross = 3 * dpr;
+  ctx.beginPath();
+  for (const guide of guides) {
+    const ends = (
+      guide.axis === "x"
+        ? [
+            { x: guide.at, y: guide.from },
+            { x: guide.at, y: guide.to },
+          ]
+        : [
+            { x: guide.from, y: guide.at },
+            { x: guide.to, y: guide.at },
+          ]
+    ).map((point) => worldToScreen(view, point));
+    const [a, b] = ends.map(({ x, y }) =>
+      guide.axis === "x" ? { x: crisp(x, dpr), y: y * dpr } : { x: x * dpr, y: crisp(y, dpr) },
+    );
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    for (const { x, y } of [a, b]) {
+      ctx.moveTo(x - cross, y - cross);
+      ctx.lineTo(x + cross, y + cross);
+      ctx.moveTo(x - cross, y + cross);
+      ctx.lineTo(x + cross, y - cross);
+    }
+  }
+  ctx.strokeStyle = theme.guide;
+  ctx.lineWidth = 1;
+  ctx.stroke();
+}
+
+/** Equal-spacing hints: a line across each gap with a tick at each end. */
+function drawGaps(ctx: CanvasRenderingContext2D, frame: Frame, gaps: readonly Gap[]): void {
+  const { view, dpr, theme } = frame;
+  const tick = 4 * dpr;
+  ctx.beginPath();
+  for (const gap of gaps) {
+    const [a, b] = (
+      gap.axis === "x"
+        ? [
+            { x: gap.from, y: gap.at },
+            { x: gap.to, y: gap.at },
+          ]
+        : [
+            { x: gap.at, y: gap.from },
+            { x: gap.at, y: gap.to },
+          ]
+    ).map((point) => worldToScreen(view, point));
+    if (gap.axis === "x") {
+      const y = crisp(a.y, dpr);
+      ctx.moveTo(a.x * dpr, y);
+      ctx.lineTo(b.x * dpr, y);
+      for (const x of [crisp(a.x, dpr), crisp(b.x, dpr)]) {
+        ctx.moveTo(x, y - tick);
+        ctx.lineTo(x, y + tick);
+      }
+    } else {
+      const x = crisp(a.x, dpr);
+      ctx.moveTo(x, a.y * dpr);
+      ctx.lineTo(x, b.y * dpr);
+      for (const y of [crisp(a.y, dpr), crisp(b.y, dpr)]) {
+        ctx.moveTo(x - tick, y);
+        ctx.lineTo(x + tick, y);
+      }
+    }
+  }
+  ctx.strokeStyle = theme.guide;
+  ctx.lineWidth = 1;
+  ctx.stroke();
 }
 
 function drawOrigin(ctx: CanvasRenderingContext2D, frame: Frame): void {

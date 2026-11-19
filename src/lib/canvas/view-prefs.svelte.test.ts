@@ -22,6 +22,23 @@ describe("view prefs", () => {
     expect(new ViewPrefs(storage).showFills).toBe(false);
   });
 
+  it("snaps, to the grid too, by default", () => {
+    const prefs = new ViewPrefs(memory());
+    expect(prefs.snapping).toBe(true);
+    expect(prefs.snapToGrid).toBe(true);
+  });
+
+  it("remembers turning snapping and grid snapping off", () => {
+    const storage = memory();
+    const prefs = new ViewPrefs(storage);
+    prefs.setSnapping(false);
+    prefs.setSnapToGrid(false);
+    const next = new ViewPrefs(storage);
+    expect(next.snapping).toBe(false);
+    expect(next.snapToGrid).toBe(false);
+    expect(next.showFills).toBe(true);
+  });
+
   it("falls back to the default when storage throws", () => {
     const broken: PrefsStorage = {
       getItem: () => {

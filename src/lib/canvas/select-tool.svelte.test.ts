@@ -7,6 +7,7 @@ import { Selection } from "#lib/document/selection.svelte.js";
 import { IDENTITY, translate, type Transform } from "#lib/document/transform.js";
 import { buildScene } from "./scene.js";
 import { SelectTool } from "./select-tool.svelte.js";
+import type { SnapOptions } from "./snap.js";
 import type { View } from "./view.js";
 
 const rect = (id: string, transform: Transform = IDENTITY): SceneObject => ({
@@ -23,17 +24,19 @@ const rect = (id: string, transform: Transform = IDENTITY): SceneObject => ({
 // 2 px per mm, world origin at screen (0, 200): a is x 0–20, y 190–200 on screen.
 const view: View = { zoom: 2, x: 0, y: 200 };
 
-function setup() {
+const SNAP: SnapOptions = { enabled: true, grid: false, bed: null, area: null };
+
+function setup(snap?: SnapOptions) {
   const editor = new DocumentEditor(new Lifecycle());
   editor.execute(insert([rect("a"), rect("b", translate(50, 0))]));
   editor.load(editor.doc); // a clean history
   const selection = new Selection(editor);
-  const tool = new SelectTool(editor, selection);
+  const tool = new SelectTool(editor, selection, snap && (() => snap));
   const scene = () => buildScene(editor.doc);
   const press = (x: number, y: number, shift = false, alt = false) =>
     tool.down({ at: { x, y }, shift, alt }, view, scene());
-  const drag = (x: number, y: number, shift = false, alt = false) =>
-    tool.move({ at: { x, y }, shift, alt }, view);
+  const drag = (x: number, y: number, shift = false, alt = false, ctrl = false) =>
+    tool.move({ at: { x, y }, shift, alt, ctrl }, view);
   const release = () => tool.up(view, scene());
   const click = (x: number, y: number, shift = false) => {
     press(x, y, shift);
@@ -156,5 +159,80 @@ describe("select tool", () => {
     expect(tool.marquee).toBeNull();
     release();
     expect(selection.ids).toEqual([]);
+  });
+});
+
+describe("select tool snapping", () => {
+  // Reach is 6 px: 3 mm at 2 px/mm.
+  it("snaps a moved box onto another's edge and shows the guide", () => {
+    const { tool, press, drag, release, transformOf } = setup(SNAP);
+    press(0, 195);
+    // 38.5 mm right puts a's right edge at 48.5, 1.5 mm short of b's left edge.
+    drag(77, 195);
+    expect(transformOf("a")).toEqual(translate(40, 0));
+    expect(tool.guides).toContainEqual({ axis: "x", at: 50, from: 0, to: 5 });
+    release();
+    expect(tool.guides).toEqual([]);
+  });
+
+  it("holds off while ctrl is down, and snaps again when it is let go", () => {
+    const { tool, press, drag, release, transformOf } = setup(SNAP);
+    press(0, 195);
+    drag(77, 195, false, false, true);
+    expect(transformOf("a")).toEqual(translate(38.5, 0));
+    expect(tool.guides).toEqual([]);
+    tool.modifiers({ shift: false, alt: false, ctrl: false }, view);
+    expect(transformOf("a")).toEqual(translate(40, 0));
+    release();
+  });
+
+  it("does not snap with snapping off", () => {
+    const { press, drag, release, transformOf } = setup();
+    press(0, 195);
+    drag(77, 195);
+    release();
+    expect(transformOf("a")).toEqual(translate(38.5, 0));
+  });
+
+  it("snaps the dragged edge when resizing", () => {
+    const { tool, click, press, drag, release, transformOf } = setup(SNAP);
+    click(0, 195);
+    // The east handle at screen (20, 195) dragged to x = 48.8 mm snaps to b's left edge at 50.
+    press(20, 195);
+    drag(97.6, 195);
+    expect(transformOf("a")).toEqual([5, 0, 0, 1, 0, 0]);
+    expect(tool.guides).toContainEqual({ axis: "x", at: 50, from: 0, to: 5 });
+    release();
+  });
+
+  it("snaps to the bed and the grid", () => {
+    const { press, drag, release, transformOf } = setup({
+      ...SNAP,
+      grid: true,
+      bed: { minX: 0, minY: 0, maxX: 400, maxY: 300 },
+    });
+    press(0, 195);
+    // a's edges to y = 11.3 and 16.3: no object or bed line near, so the 5 mm grid at 2 px/mm takes them down 1.3.
+    drag(0, 172.4);
+    expect(transformOf("a")).toEqual(translate(0, 10));
+    // Its centre at x = 199 snaps to the bed's centre at 200.
+    drag(388, 195);
+    expect(transformOf("a")).toEqual(translate(195, 0));
+    release();
+  });
+
+  it("snaps a moved box to an equal spacing and shows the gaps", () => {
+    const { editor, tool, press, drag, release, transformOf } = setup(SNAP);
+    editor.execute(insert([rect("c", translate(100, 0))]));
+    press(0, 195);
+    // a at 74.6–84.6 sits 0.4 mm short of midway between b (ends at 60) and c (starts at 100).
+    drag(149.2, 195);
+    expect(transformOf("a")).toEqual(translate(75, 0));
+    expect(tool.gaps).toEqual([
+      { axis: "x", from: 60, to: 75, at: 2.5 },
+      { axis: "x", from: 85, to: 100, at: 2.5 },
+    ]);
+    release();
+    expect(tool.gaps).toEqual([]);
   });
 });

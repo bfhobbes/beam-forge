@@ -124,6 +124,7 @@ export class Scene {
   /** Everything in the document, or null when it is empty. */
   readonly bounds: Bounds | null;
   #index = new RBush<Entry>();
+  #roots: Map<string, Bounds> | null = null;
 
   constructor(items: SceneItem[]) {
     this.items = items;
@@ -163,6 +164,19 @@ export class Scene {
       }
     }
     return null;
+  }
+
+  /** Bounds of one top-level object, or null if it is not in the scene. Indexed on first use. */
+  rootBounds(rootId: string): Bounds | null {
+    if (!this.#roots) {
+      const roots = new Map<string, Bounds>();
+      for (const item of this.items) {
+        const box = roots.get(item.rootId);
+        roots.set(item.rootId, box ? unionBounds([box, item.bounds])! : { ...item.bounds });
+      }
+      this.#roots = roots;
+    }
+    return this.#roots.get(rootId) ?? null;
   }
 
   /** Bounds of the given top-level objects, or null if none are in the scene. */
