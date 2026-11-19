@@ -1371,3 +1371,65 @@ fn motion_is_deterministic() {
     };
     assert_eq!(run_once(), run_once());
 }
+
+// ---- feed hold suspends the main loop ----
+
+#[test]
+fn a_feed_hold_pauses_a_dwell_and_the_lines_behind_it() {
+    let mut sim = laser();
+    sim.feed(b"G4 P2\nM8\n");
+    sim.advance(Duration::from_millis(500));
+    assert_eq!(sim.state(), MachineState::Idle, "GRBL dwells in Idle");
+
+    // A hold at Idle completes at once, and GRBL's suspend loop freezes
+    // the dwell's countdown (`delay_sec` runs realtime commands inside it).
+    send(&mut sim, b"!");
+    assert_eq!(sim.state(), MachineState::Hold(0));
+    sim.advance(Duration::from_secs(5));
+    assert_eq!(sim.state(), MachineState::Hold(0));
+    assert_eq!(String::from_utf8(sim.take_output()).unwrap(), "");
+    assert!(!sim.air_assist(), "M8 waits behind the held dwell");
+
+    // After `~` the dwell finishes the 1.5 s it had left, then M8 acts.
+    let resumed = sim.now();
+    assert_eq!(send(&mut sim, b"~"), "");
+    assert_eq!(sim.state(), MachineState::Idle);
+    sim.advance(Duration::from_millis(1499));
+    assert_eq!(String::from_utf8(sim.take_output()).unwrap(), "");
+    assert!(!sim.air_assist());
+    sim.advance(Duration::from_millis(1));
+    assert_eq!(
+        String::from_utf8(sim.take_output()).unwrap(),
+        "ok\r\nok\r\n"
+    );
+    assert!(sim.air_assist());
+    assert_eq!(sim.now() - resumed, Duration::from_millis(1500));
+}
+
+#[test]
+fn lines_are_parsed_while_a_hold_decelerates_but_not_once_it_completes() {
+    let mut sim = laser();
+    send(&mut sim, b"G1 X50 F1200\n");
+    sim.advance(Duration::from_millis(500));
+    send(&mut sim, b"!");
+    assert_eq!(sim.state(), MachineState::Hold(1));
+
+    // GRBL's main loop keeps planning lines until the stop finishes.
+    assert_eq!(send(&mut sim, b"G1 X60\n"), "ok\r\n");
+    assert_eq!(sim.planner_queued(), 2);
+    sim.advance(Duration::from_millis(300));
+    assert_eq!(sim.state(), MachineState::Hold(0));
+
+    // Then it blocks in the suspend loop until resumed.
+    assert_eq!(send(&mut sim, b"G1 X70\n"), "");
+    sim.advance(Duration::from_secs(2));
+    assert_eq!(String::from_utf8(sim.take_output()).unwrap(), "");
+    assert_eq!(sim.rx_buffered(), 7);
+    assert_eq!(sim.planner_queued(), 2);
+    assert_position(sim.machine_position(), [10.0, 0.0, 0.0]);
+
+    assert_eq!(send(&mut sim, b"~"), "ok\r\n");
+    assert_eq!(sim.state(), MachineState::Run);
+    finish(&mut sim);
+    assert_position(sim.machine_position(), [70.0, 0.0, 0.0]);
+}

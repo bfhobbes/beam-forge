@@ -528,3 +528,34 @@ fn identical_input_gives_identical_output() {
     };
     assert_eq!(run(), run());
 }
+
+#[test]
+fn a_hold_at_idle_leaves_lines_in_the_rx_buffer_until_resumed() {
+    let mut sim = sim_with(&[(10, 2.0)]);
+    send(&mut sim, b"!");
+    assert_eq!(sim.state(), MachineState::Hold(0));
+
+    // GRBL's suspend loop parses nothing: no ok, no motion, no coolant.
+    assert_eq!(send(&mut sim, b"G1 X10 F600\nM8\n"), "");
+    sim.advance(Duration::from_secs(2));
+    assert_eq!(String::from_utf8(sim.take_output()).unwrap(), "");
+    assert_eq!(sim.rx_buffered(), 15);
+    assert_eq!(sim.planner_queued(), 0);
+    assert_eq!(sim.machine_position(), [0.0, 0.0, 0.0]);
+    assert!(!sim.air_assist());
+    let report = status(&mut sim);
+    assert!(
+        report.starts_with("<Hold:0|WPos:0.000,0.000,0.000|Bf:15,113|"),
+        "{report}"
+    );
+
+    // After `~` the move is answered and runs; M8 syncs on it, then acts.
+    assert_eq!(send(&mut sim, b"~"), "ok\r\n");
+    assert_eq!(sim.state(), MachineState::Run);
+    assert!(!sim.air_assist());
+    sim.advance(Duration::from_secs(3));
+    assert_eq!(String::from_utf8(sim.take_output()).unwrap(), "ok\r\n");
+    assert_eq!(sim.state(), MachineState::Idle);
+    assert_eq!(sim.machine_position(), [10.0, 0.0, 0.0]);
+    assert!(sim.air_assist());
+}

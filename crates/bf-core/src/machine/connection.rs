@@ -2175,9 +2175,9 @@ mod tests {
             assert_eq!(link.sim().laser_power(), 0.0);
         }
         assert_eq!(realtime_count(&link, 0x9E), 1, "sent once per hold");
-        // The program is still M3: resuming turns the laser back on.
-        assert!(parser_state(&connection).contains("M3"));
 
+        // The program is still M3: resuming turns the laser back on. (GRBL
+        // parses no lines, `$G` included, until a completed hold resumes.)
         handle.resume_job().unwrap();
         let progress = follow_job(&inbox, |_| {});
         assert_eq!(progress.last().unwrap().state, JobState::Finished);
