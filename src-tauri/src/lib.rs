@@ -68,6 +68,7 @@ fn commands<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> 
             machine::control::machine_jog_stop,
             machine::control::machine_command,
             machine::control::machine_test_fire,
+            machine::control::machine_test_home,
             machine::job::machine_run_file,
             machine::job::machine_preflight,
             machine::job::machine_run_document,
@@ -871,6 +872,184 @@ EOF
         assert_eq!(profiles[0]["laserMode"], true);
 
         call(&window, "machine_disconnect", json!({})).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The setup checklist's steps that move or fire the machine, walked in
+    /// order with the commands the checklist sends: laser mode, a test home,
+    /// the jog test, the framed test square, a test fire and air assist.
+    /// Then its progress is saved with the profile.
+    #[test]
+    fn walks_the_setup_checklist_on_the_simulator() {
+        use std::time::{Duration, Instant};
+        use tauri::Manager;
+
+        let (app, window) = main_window();
+        let dir = std::env::temp_dir().join(format!("bf-ipc-setup-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        app.state::<machine::settings::Profiles>()
+            .use_dir(dir.clone());
+        let mut machine = bf_sim::Profile::diode_laser();
+        machine.settings.set(32, 0.0).unwrap();
+        machine.settings.set(22, 1.0).unwrap();
+        let (port, sim) = serve_shared_simulator(machine);
+        let wait = |what: &str, done: &dyn Fn(&bf_sim::Simulator) -> bool| {
+            let deadline = Instant::now() + Duration::from_secs(10);
+            while !done(&sim.lock().unwrap()) {
+                assert!(Instant::now() < deadline, "{what}");
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        };
+        // Commands that wait for the machine to be ready, retried until it is.
+        let retry = |command: &dyn Fn() -> Result<Value, Value>| {
+            let deadline = Instant::now() + Duration::from_secs(5);
+            loop {
+                match command() {
+                    Ok(value) => return value,
+                    Err(error) => assert!(Instant::now() < deadline, "{error}"),
+                }
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        };
+        let idle_at = |x: f64, y: f64| {
+            move |sim: &bf_sim::Simulator| {
+                let [mx, my, _] = sim.machine_position();
+                sim.state() == bf_sim::MachineState::Idle && mx == x && my == y
+            }
+        };
+        call(
+            &window,
+            "machine_connect",
+            json!({ "port": tcp_port(port) }),
+        )
+        .unwrap();
+
+        // Connecting creates the profile, with the checklist offered.
+        let read = call(&window, "machine_settings", json!({})).unwrap();
+        assert_eq!(
+            read["profile"]["setup"],
+            json!({ "steps": {}, "dismissed": false })
+        );
+        // Laser mode.
+        let written = call(
+            &window,
+            "machine_write_setting",
+            json!({ "number": 32, "value": "1" }),
+        )
+        .unwrap();
+        assert_eq!(written["profile"]["laserMode"], true);
+        assert_eq!(written["profile"]["homing"], true);
+
+        // The test home waits for the cycle and reports it.
+        call(&window, "machine_test_home", json!({})).unwrap();
+        wait("homed", &idle_at(-1.0, -1.0));
+
+        // The jog test: +X, then +Y.
+        for (direction, x, y) in [
+            (json!({ "x": 1, "y": 0 }), 9.0, -1.0),
+            (json!({ "x": 0, "y": 1 }), 9.0, 9.0),
+        ] {
+            call(
+                &window,
+                "machine_jog",
+                json!({ "direction": direction, "distance": 10.0, "feed": 3000.0 }),
+            )
+            .unwrap();
+            wait("jogged", &idle_at(x, y));
+        }
+
+        // The test square near the origin, framed at low power so the
+        // simulator's burn trace shows where it went.
+        let mut profile = written["profile"].clone();
+        profile["framePower"] = json!(1.0);
+        let square = json!({ "version": 1, "units": "mm", "layers": [{
+            "id": "layer-1", "name": "Layer 1", "color": "#ff0000", "mode": "line",
+            "speed": 3000.0, "maxPower": 10.0, "minPower": 0.0, "passes": 1,
+            "constantPower": false, "airAssist": false, "output": true, "shown": true,
+            "lineInterval": 0.1, "scanAngle": 0.0, "bidirectional": true, "overscan": 2.5,
+            "fillGap": 1.0
+        }], "objects": [{
+            "type": "rect", "id": "square", "name": "Test square", "layerId": "layer-1",
+            "transform": [1.0, 0.0, 0.0, 1.0, 10.0, 10.0],
+            "width": 20.0, "height": 20.0, "cornerRadius": 0.0
+        }] });
+        sim.lock().unwrap().take_trace();
+        // Framing waits for a status report saying the machine is idle.
+        retry(&|| {
+            call(
+                &window,
+                "machine_frame",
+                json!({
+                    "document": square,
+                    "profile": profile,
+                    "placement": { "startFrom": "absolute", "anchor": "bottomLeft" },
+                    "shape": "box",
+                }),
+            )
+        });
+        wait("framed", &|sim| {
+            sim.state() == bf_sim::MachineState::Idle
+                && sim.laser_power() == 0.0
+                && burns(sim).len() == 4
+        });
+        let traced = burns(&sim.lock().unwrap());
+        let ends: Vec<[f64; 2]> = traced.iter().map(|burn| burn.1).collect();
+        assert_eq!(
+            ends,
+            [[30.0, 10.0], [30.0, 30.0], [10.0, 30.0], [10.0, 10.0]],
+            "{traced:?}"
+        );
+
+        // The low-power test fire, once the frame job has finished.
+        let fire = json!({ "fire": { "power": 1.0, "durationMs": 100 }, "profile": profile });
+        let fired = retry(&|| call(&window, "machine_test_fire", fire.clone()));
+        assert_eq!(fired, json!({ "power": 1.0, "durationMs": 100 }));
+        wait("fired, then off", &|sim| {
+            sim.laser_power() == 0.0
+                && sim
+                    .trace()
+                    .iter()
+                    .any(|segment| segment.is_stationary() && segment.power > 0.0)
+        });
+        let peak = sim
+            .lock()
+            .unwrap()
+            .trace()
+            .iter()
+            .filter(|segment| segment.is_stationary())
+            .map(|segment| segment.power)
+            .fold(0.0, f64::max);
+        assert!((peak - 0.01).abs() < 1e-9, "1% of $30: {peak}");
+
+        // Air assist on, then off.
+        let air = |on: bool| {
+            let sent = json!({
+                "command": { "command": "airAssist", "on": on },
+                "profile": profile,
+            });
+            // The test fire's off command may still be on its way.
+            retry(&|| call(&window, "machine_command", sent.clone()));
+        };
+        air(true);
+        wait("air on", &|sim| sim.air_assist());
+        air(false);
+        wait("air off", &|sim| !sim.air_assist());
+
+        // Progress is saved with the profile.
+        let steps = json!({
+            "connected": "done", "bed": "done", "laserMode": "done", "homing": "done",
+            "jogTest": "done", "frameTest": "done", "fireTest": "done", "airAssist": "skipped",
+        });
+        profile["setup"] = json!({ "steps": steps, "dismissed": false });
+        call(
+            &window,
+            "machine_profile_save",
+            json!({ "profile": profile }),
+        )
+        .unwrap();
+        call(&window, "machine_disconnect", json!({})).unwrap();
+        let profiles = call(&window, "machine_profiles", json!({})).unwrap();
+        assert_eq!(profiles[0]["setup"]["steps"], steps);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

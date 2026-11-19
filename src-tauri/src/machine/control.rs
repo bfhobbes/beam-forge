@@ -6,6 +6,8 @@
 //! the test fire's off command goes out after its duration even if the
 //! window freezes or closes.
 
+use std::time::Duration;
+
 use bf_core::machine::{ConnectionHandle, JogDirection, MachineProfile, SendError, TestFire};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Runtime};
@@ -31,6 +33,9 @@ pub enum MachineCommand {
     /// Air assist on (the profile's command, usually `M8`) or off (`M9`).
     AirAssist { on: bool },
 }
+
+/// The longest a test home may take: a full-bed seek at a slow `$25`.
+const HOME_TIMEOUT: Duration = Duration::from_secs(120);
 
 fn handle<R: Runtime>(app: &AppHandle<R>) -> Result<ConnectionHandle, String> {
     let inner = Machine::of(app).lock();
@@ -109,4 +114,28 @@ pub fn machine_test_fire<R: Runtime>(
 ) -> Result<TestFire, String> {
     let max_spindle = profile.unwrap_or_default().max_spindle;
     send(&app, |handle| handle.test_fire(fire, max_spindle))
+}
+
+/// Runs the homing cycle and waits for it to finish, for the setup
+/// checklist's test home. Fails with the controller's reason if it didn't
+/// home, such as an alarm when a limit switch isn't found.
+#[tauri::command]
+pub async fn machine_test_home<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
+    let handle = handle(&app)?;
+    if handle.job_active() {
+        return Err(SendError::JobRunning.to_string());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        handle
+            .query(handle.dialect().home(), HOME_TIMEOUT)
+            .map_err(|error| format!("Homing failed: {error}"))?;
+        // An alarm mid-cycle can still be followed by an `ok`.
+        if handle.homed() {
+            Ok(())
+        } else {
+            Err("Homing failed: the machine raised an alarm.".to_string())
+        }
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }

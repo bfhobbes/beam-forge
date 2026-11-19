@@ -57,6 +57,7 @@ function fakeAdapter() {
       power: Math.min(fire.power, TEST_FIRE_MAX_POWER),
       durationMs: Math.min(fire.durationMs, TEST_FIRE_MAX_MS),
     })),
+    testHome: vi.fn<ControlAdapter["testHome"]>(async () => {}),
   } satisfies ControlAdapter;
 }
 
@@ -256,6 +257,37 @@ describe("MachineControl test fire", () => {
     expect(control.firing).toBe(false);
     expect(control.error).toBe("The machine must be idle to test fire.");
     expect(lifecycle.canClose).toBe(true);
+  });
+});
+
+describe("test home", () => {
+  it("holds the other controls until the cycle finishes", async () => {
+    let finish = () => {};
+    const { adapter, control } = setup({ homing: true });
+    adapter.testHome.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)));
+    const homed = control.testHome();
+    expect(control.homing).toBe(true);
+    expect(control.canJog).toBe(false);
+    expect(control.canHome).toBe(false);
+    finish();
+    expect(await homed).toBe(true);
+    expect(control.homing).toBe(false);
+    expect(control.canJog).toBe(true);
+  });
+
+  it("says why it failed", async () => {
+    const { adapter, control } = setup({ homing: true });
+    adapter.testHome.mockRejectedValueOnce(
+      new Error("Homing failed: the machine raised an alarm."),
+    );
+    expect(await control.testHome()).toBe(false);
+    expect(control.error).toBe("Homing failed: the machine raised an alarm.");
+  });
+
+  it("jogs a given distance for the jog test", async () => {
+    const { adapter, control } = setup();
+    expect(await control.jog({ x: 1, y: 0 }, 10)).toBe(true);
+    expect(adapter.jog).toHaveBeenCalledWith({ x: 1, y: 0 }, 10, control.feed);
   });
 });
 
